@@ -19,7 +19,9 @@
         ↓
 Transformer 基础组件
         ↓
-LLM 架构设计
+现代 Transformer 架构演进
+  ├─ LLaMA
+  └─ DeepSeek V1 → V2 → V3 → V4 → V4.1
         ↓
 预训练 / 数据 / 优化
         ↓
@@ -36,8 +38,8 @@ LLM 架构设计
 |---|---|---|
 | [00 · 学习路线](docs/00-roadmap/README.md) | 学习顺序、知识地图、复习方法 | 🟢 已建立 |
 | [01 · 基础知识](docs/01-foundations/) | 激活函数、归一化、Embedding、损失函数等 | 🟢 进行中 |
-| [02 · Transformer](docs/02-transformer/) | Attention、MHA/GQA/MQA、RoPE、FFN、Residual | 🟡 待补充 |
-| [03 · LLM 架构](docs/03-llm-architecture/) | LLaMA、DeepSeek、MoE、Dense vs MoE 等 | 🟡 待补充 |
+| [02 · Transformer](docs/02-transformer/) | Attention、MHA/GQA/MQA、RoPE、FFN，以及 DeepSeek Transformer 演进 | 🟢 进行中 |
+| [03 · LLM 架构](docs/03-llm-architecture/) | LLaMA、MoE、Dense vs MoE 等跨模型架构专题 | 🟡 待补充 |
 | [04 · 训练](docs/04-training/) | 数据、预训练、优化器、并行训练、Scaling Law | 🟡 待补充 |
 | [05 · 推理](docs/05-inference/) | KV Cache、Prefill/Decode、量化、推理加速 | 🟡 待补充 |
 | [06 · 对齐与评测](docs/06-alignment-evaluation/) | SFT、RLHF、DPO、Reward Model、Benchmark | 🟡 待补充 |
@@ -57,6 +59,20 @@ LLM 架构设计
 - GLU、GEGLU、SwiGLU 的门控结构；
 - 为什么 LLaMA 类模型常用 SwiGLU；
 - 为什么 SwiGLU 的 FFN hidden size 常接近 `8/3 × d_model`，而不是传统的 `4 × d_model`。
+
+### [DeepSeek Transformer 系列](docs/02-transformer/deepseek/README.md)
+
+按版本拆分记录 DeepSeek 的架构演进：
+
+- V1：Dense Transformer / GQA；
+- V2：MLA + DeepSeekMoE；
+- V2.5：沿用 V2 架构，能力融合与后训练升级；
+- V3：MLA + MoE + MTP + 无辅助损失负载均衡；
+- R1：基于强基座的强化学习推理路线；
+- V3.1：Hybrid Thinking 与长上下文扩展；
+- V3.2：DeepSeek Sparse Attention；
+- V4：百万上下文、Hybrid/Compressed Attention、mHC；
+- V4.1-Flash：新架构族与原生多模态，随官方技术材料继续补充。
 
 ## 🧠 推荐的笔记写法
 
