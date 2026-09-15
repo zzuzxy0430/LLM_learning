@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CosyVoice 3 中 Flow Matching 与 DiT 的原理</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f4f7fb;
+      --paper: #ffffff;
+      --ink: #1d2939;
+      --muted: #667085;
+      --line: #e4e7ec;
+      --brand: #175cd3;
+      --brand-soft: #eff8ff;
+      --code: #101828;
+      --code-bg: #f2f4f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                   "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.75;
+    }
+    main {
+      width: min(960px, calc(100% - 32px));
+      margin: 36px auto;
+      padding: clamp(24px, 5vw, 64px);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 12px 36px rgba(16, 24, 40, .07);
+    }
+    h1, h2, h3, h4 { line-height: 1.3; color: #101828; }
+    h1 { margin: 0 0 24px; font-size: clamp(28px, 4vw, 42px); }
+    h2 {
+      margin: 48px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 24px;
+    }
+    h3 { margin: 30px 0 12px; font-size: 19px; }
+    h4 { margin: 24px 0 10px; font-size: 17px; }
+    p { margin: 12px 0; }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .note {
+      padding: 16px 18px;
+      border-left: 4px solid var(--brand);
+      border-radius: 8px;
+      background: var(--brand-soft);
+    }
+    .pipeline, pre {
+      overflow-x: auto;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--code-bg);
+      color: var(--code);
+      font: 14px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .equation {
+      overflow-x: auto;
+      margin: 18px 0;
+      padding: 14px 18px;
+      border-radius: 10px;
+      background: #f8fafc;
+      text-align: center;
+      font-family: "Times New Roman", "STIX Two Math", serif;
+      font-size: 1.13rem;
+    }
+    blockquote {
+      margin: 20px 0;
+      padding: 14px 20px;
+      border-left: 4px solid #98a2b3;
+      background: #f9fafb;
+      color: #344054;
+    }
+    table {
+      width: 100%;
+      margin: 18px 0;
+      border-collapse: collapse;
+    }
+    th, td { padding: 11px 13px; border: 1px solid var(--line); text-align: left; }
+    th { background: #f9fafb; }
+    code {
+      padding: .15em .35em;
+      border-radius: 5px;
+      background: var(--code-bg);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    li { margin: 6px 0; }
+    .summary {
+      margin-top: 22px;
+      padding: 20px;
+      border: 1px solid #b2ddff;
+      border-radius: 12px;
+      background: var(--brand-soft);
+      font-size: 1.08rem;
+      font-weight: 600;
+    }
+    .muted { color: var(--muted); }
+    @media print {
+      body { background: white; }
+      main { width: 100%; margin: 0; border: 0; box-shadow: none; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>CosyVoice 3 中 Flow Matching 与 DiT 的原理</h1>
+
+  <p class="note"><strong>版本说明：</strong>当前仓库中，使用 DiT 作为 Flow Matching 速度场估计器的是 <strong>CosyVoice 3</strong>。CosyVoice 2 使用卷积/U-Net 风格的 <code>CausalConditionalDecoder</code>。DiT 并不是另一套 Flow Matching 算法，而是负责预测速度场的骨干网络。</p>
+
+  <h2>1. 整体生成链路</h2>
+
+  <div class="pipeline"><pre>文本
+  │
+  ▼
+LLM 预测 25 Hz 离散 speech token
+  │ token embedding，并上采样到 50 Hz
+  ▼
+Conditional Flow Matching
+  ├── 初始状态：高斯噪声 mel
+  ├── 条件：speech token、prompt mel、speaker embedding
+  └── DiT：预测当前状态的速度
+  │ 10 步 ODE 积分
+  ▼
+80 维、50 Hz mel 频谱
+  │
+  ▼
+HiFT vocoder
+  │
+  ▼
+24 kHz 音频波形</pre></div>
+
+  <p>LLM 主要负责离散层面的内容、发音和粗粒度韵律；Flow Matching 负责把这些离散信息还原成连续、细腻的声学特征；HiFT 再把 mel 频谱转换为最终波形。</p>
+
+  <h2>2. Flow Matching 学习的目标</h2>
+
+  <p>设：</p>
+  <ul>
+    <li><i>x</i><sub>1</sub>：训练数据中的真实 80 维 mel 频谱；</li>
+    <li><i>z</i> ∼ N(0, I)：与 mel 形状相同的高斯噪声；</li>
+    <li><i>t</i> ∼ U(0, 1)：随机采样的时间；</li>
+    <li>σ<sub>min</sub> = 10<sup>−6</sup>。</li>
+  </ul>
+
+  <p>CosyVoice 构造一条从噪声到真实 mel 的近似直线路径：</p>
+  <div class="equation"><i>x</i><sub>t</sub> = [1 − (1 − σ<sub>min</sub>)<i>t</i>]<i>z</i> + <i>t x</i><sub>1</sub></div>
+
+  <ul>
+    <li>当 <i>t</i> = 0 时，<i>x</i><sub>t</sub> = <i>z</i>，输入完全是噪声；</li>
+    <li>当 <i>t</i> = 1 时，<i>x</i><sub>t</sub> = <i>x</i><sub>1</sub> + σ<sub>min</sub><i>z</i>，几乎就是真实 mel。</li>
+  </ul>
+
+  <p>这条路径对时间求导，得到训练目标速度：</p>
+  <div class="equation"><i>u</i><sub>t</sub> = d<i>x</i><sub>t</sub>/d<i>t</i> = <i>x</i><sub>1</sub> − (1 − σ<sub>min</sub>)<i>z</i></div>
+
+  <p>DiT 接收当前状态、时间和所有条件，预测这个速度：</p>
+  <div class="equation"><i>v</i><sub>θ</sub>(<i>x</i><sub>t</sub>, <i>t</i>, <i>c</i>) ≈ <i>u</i><sub>t</sub></div>
+
+  <p>训练损失是有效 mel 区域上的均方误差：</p>
+  <div class="equation">L<sub>CFM</sub> = E[‖ M ⊙ (<i>v</i><sub>θ</sub>(<i>x</i><sub>t</sub>, <i>t</i>, <i>c</i>) − <i>u</i><sub>t</sub>) ‖<sub>2</sub><sup>2</sup>]</div>
+
+  <blockquote>随机取“噪声到真实语音”路径上的一个位置，然后告诉模型：站在这里时，应该朝哪个方向、以多快的速度移动。</blockquote>
+
+  <p>模型不会直接看到终点 <i>x</i><sub>1</sub> 和噪声 <i>z</i>，只能根据当前位置、时间和语音条件预测方向。MSE 的最优解对应给定这些观测时的条件平均速度，该速度场可以把噪声分布连续地运输到条件语音分布。</p>
+
+  <p class="muted">代码：<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow_matching.py#L181">构造 x<sub>t</sub> 与目标速度</a>；<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow_matching.py#L191">DiT 预测与 MSE</a>。</p>
+
+  <h2>3. DiT 在 CosyVoice 3 中的作用</h2>
+
+  <p>DiT 原名 Diffusion Transformer。它虽然起源于扩散模型，但本质上是一个带时间条件的 Transformer，因此也可以用于预测 Flow Matching 的速度场。</p>
+
+  <table>
+    <thead><tr><th>输入</th><th>维度</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><i>x</i><sub>t</sub></td><td>80</td><td>当前时刻的带噪 mel</td></tr>
+      <tr><td><code>mu</code></td><td>80</td><td>由 LLM speech token 得到的连续条件</td></tr>
+      <tr><td><code>cond</code></td><td>80</td><td>prompt/reference mel；非 prompt 区域为零</td></tr>
+      <tr><td><code>spks</code></td><td>80</td><td>从 192 维 x-vector 投影得到的说话人条件</td></tr>
+      <tr><td><i>t</i></td><td>标量</td><td>当前 Flow/ODE 时间</td></tr>
+    </tbody>
+  </table>
+
+  <p>这些输入并不是以相同方式进入 DiT：</p>
+  <ul>
+    <li><i>x</i><sub>t</sub> 是 ODE 当前状态，也是 DiT 要处理的主体，严格来说不属于条件；</li>
+    <li><code>mu</code>、<code>cond</code> 和 <code>spks</code> 通过输入层的逐帧特征拼接进入 DiT；</li>
+    <li>时间 <i>t</i> 不参与输入特征拼接，而是通过时间嵌入和 AdaLayerNorm 调制每一层。</li>
+  </ul>
+
+  <p><code>mu</code> 这个变量名容易被误解：在 CosyVoice 3 中，它是经过嵌入、轻量前瞻处理并上采样后的 <strong>speech-token 条件</strong>，不是待生成 mel 的均值。</p>
+
+  <h3>3.1 <code>mu</code>、prompt 和 speaker：逐帧特征拼接</h3>
+
+  <p>进入 <code>InputEmbedding</code> 前，<i>x</i><sub>t</sub>、<code>mu</code> 和 <code>cond</code> 都从 <code>[B, 80, T]</code> 转换为 <code>[B, T, 80]</code>。全局 speaker embedding 则沿时间维复制 <i>T</i> 次。因此，对第 <i>i</i> 个 mel 时间帧，输入为：</p>
+
+  <div class="equation"><i>q</i><sub>i</sub> = [<i>x</i><sub>t,i</sub>; cond<sub>i</sub>; μ<sub>i</sub>; <i>e</i><sub>spk</sub>]</div>
+
+  <p>每一项都是 80 维，所以：</p>
+  <div class="equation"><i>q</i><sub>i</sub> ∈ R<sup>80+80+80+80</sup> = R<sup>320</sup></div>
+
+  <p>随后，每个 <i>q</i><sub>i</sub> 被线性投影为一个 1024 维的 DiT token：</p>
+  <div class="equation"><i>h</i><sub>i</sub> = <i>W</i><sub>in</sub><i>q</i><sub>i</sub> + <i>b</i></div>
+
+  <p>这里的拼接发生在最后一个 feature/channel 维度，<strong>不会增加序列长度</strong>。它不是下面这种 prefix-token 方式：</p>
+
+  <pre>[prompt tokens] [speaker token] [mu tokens] [audio tokens]</pre>
+
+  <p>实际结构是：</p>
+
+  <pre>时间帧 1: [x_t,1 | prompt_1 | mu_1 | speaker] → DiT token 1
+时间帧 2: [x_t,2 | prompt_2 | mu_2 | speaker] → DiT token 2
+时间帧 3: [x_t,3 | prompt_3 | mu_3 | speaker] → DiT token 3
+...</pre>
+
+  <ul>
+    <li><code>mu</code> 是离散 speech token 经 embedding、前瞻层处理并由 25 Hz 重复上采样至 50 Hz 后的逐帧条件；</li>
+    <li><code>cond</code> 是与 mel 等长的 prompt 条件，prompt 区域放入真实参考 mel，其他区域填零；</li>
+    <li><code>spks</code> 是全局说话人向量，但在拼接前会复制到每个时间帧。</li>
+  </ul>
+
+  <h4><code>mu</code> 与 mel 的长度关系</h4>
+
+  <p>原始 speech token 和 mel 的时间长度确实是 1:2。假设原始 speech token 长度为 <i>N</i>：</p>
+
+  <table>
+    <thead><tr><th>表征</th><th>帧率</th><th>长度</th></tr></thead>
+    <tbody>
+      <tr><td>原始 speech token / 前瞻处理后的 token 表征</td><td>25 Hz</td><td><i>N</i></td></tr>
+      <tr><td>上采样后的 <code>mu</code></td><td>50 Hz</td><td>2<i>N</i></td></tr>
+      <tr><td>mel</td><td>50 Hz</td><td><i>T</i><sub>mel</sub> = 2<i>N</i></td></tr>
+    </tbody>
+  </table>
+
+  <p>代码没有使用连续插值，而是用 <code>repeat_interleave(2)</code> 将每个 token 表征连续复制两次：</p>
+
+  <pre>上采样前：[mu_0, mu_1, mu_2, ...]
+上采样后：[mu_0, mu_0, mu_1, mu_1, mu_2, mu_2, ...]</pre>
+
+  <pre>h = self.pre_lookahead_layer(token)
+h = h.repeat_interleave(self.token_mel_ratio, dim=1)  # token_mel_ratio = 2</pre>
+
+  <p>因此，应该区分两个阶段：</p>
+  <ul>
+    <li><strong>进入 Flow 模型之前：</strong>原始 speech token 与 mel 的长度比为 1:2；</li>
+    <li><strong>进入 DiT 时：</strong>上采样后的 <code>mu</code> 已经与 mel 对齐，二者长度比为 1:1。</li>
+  </ul>
+
+  <p>若用 μ̃<sub>j</sub> 表示上采样前第 <i>j</i> 个 token 表征，则：</p>
+  <div class="equation">μ<sub>i</sub> = μ̃<sub>⌊i/2⌋</sub></div>
+
+  <p>第 <i>i</i> 个 DiT 输入 token 可以更明确地写为：</p>
+  <div class="equation"><i>h</i><sub>i</sub> = <i>W</i><sub>in</sub>[<i>x</i><sub>t,i</sub>; cond<sub>i</sub>; μ̃<sub>⌊i/2⌋</sub>; <i>e</i><sub>spk</sub>] + <i>b</i></div>
+
+  <p><code>speaker</code> 的处理与 <code>mu</code> 不同：它没有原始时间序列，而是把同一个全局说话人向量从 <code>[B, 80]</code> 复制为 <code>[B, T_mel, 80]</code>。最终进入 DiT 时：</p>
+
+  <table>
+    <thead><tr><th>输入</th><th>进入 DiT 时的形状</th></tr></thead>
+    <tbody>
+      <tr><td><i>x</i><sub>t</sub></td><td><code>[B, T_mel, 80]</code></td></tr>
+      <tr><td><code>mu</code></td><td><code>[B, T_mel, 80]</code></td></tr>
+      <tr><td><code>cond</code></td><td><code>[B, T_mel, 80]</code></td></tr>
+      <tr><td><code>speaker</code></td><td><code>[B, 80] → [B, T_mel, 80]</code></td></tr>
+    </tbody>
+  </table>
+
+  <p><code>pre_lookahead_len=3</code> 表示每个 token 位置可以利用有限的未来上下文，不会把 <code>mu</code> 的长度扩大三倍。长度扩大两倍只来自 <code>token_mel_ratio=2</code>。实现见 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow.py#L345">flow.py 第 345 行</a>。</p>
+
+  <p>投影后的 DiT token 还会叠加因果卷积位置特征。默认模型使用 22 层 Transformer、16 个 attention head、64 维 head 和 2 倍 FFN，最后投影回 80 维速度。</p>
+
+  <p>当前配置实际使用普通 <code>DiTBlock</code>。条件采用输入端拼接的 early fusion，而不是独立的 cross-attention。源码虽然实现了 <code>MMDiTBlock</code>，但该配置没有启用它。</p>
+
+  <h3>3.2 Prompt mel 如何注入 DiT</h3>
+
+  <p>Prompt mel 也沿特征维注入 DiT，但它只在完整序列的前缀位置非零。它既不是 AdaLayerNorm 条件，也不是额外插入到序列前面的 prefix token。</p>
+
+  <h4>3.2.1 从 prompt 音频提取三类条件</h4>
+
+  <p>前端首先把 24 kHz prompt 音频转换成 80 维声学特征：</p>
+  <div class="equation"><i>P</i> ∈ R<sup>B × T<sub>p</sub> × 80</sup></div>
+  <p>其中 <i>T</i><sub>p</sub> 是 prompt mel 的帧数。实现见 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/cli/frontend.py#L130">frontend.py 第 130 行</a>。</p>
+
+  <p>同一段 prompt 音频还会产生另外两类信息：</p>
+  <table>
+    <thead><tr><th>Prompt 信息</th><th>在 Flow 中的作用</th></tr></thead>
+    <tbody>
+      <tr><td>prompt speech token</td><td>提供离散内容和粗粒度声学信息，并成为 <code>mu</code> 的前缀</td></tr>
+      <tr><td>prompt mel</td><td>提供连续、细粒度的参考声学信息，并成为 <code>cond</code> 的前缀</td></tr>
+      <tr><td>speaker embedding</td><td>提供全局说话人信息，并复制到所有 mel 位置</td></tr>
+    </tbody>
+  </table>
+
+  <h4>3.2.2 构造与完整 mel 等长的 <code>cond</code></h4>
+
+  <p>推理时先把 prompt speech token 与待生成的 speech token 沿时间维连接：</p>
+  <pre>token = torch.concat([prompt_token, token], dim=1)</pre>
+
+  <p>经过 embedding、前瞻层和二倍重复上采样后，形成包含 prompt 与目标区域的完整 <code>mu</code>。设完整 mel 长度为：</p>
+  <div class="equation"><i>T</i> = <i>T</i><sub>p</sub> + <i>T</i><sub>g</sub></div>
+
+  <p>代码创建一个与完整 mel 等长的全零条件矩阵：</p>
+  <div class="equation">cond ∈ R<sup>B × T × 80</sup></div>
+
+  <p>并只在前 <i>T</i><sub>p</sub> 个位置写入真实 prompt mel：</p>
+  <pre>conds = torch.zeros([1, mel_len1 + mel_len2, 80])
+conds[:, :mel_len1] = prompt_feat</pre>
+
+  <div class="equation">cond<sub>i</sub> = P<sub>i</sub>, 当 i &lt; T<sub>p</sub>；否则 cond<sub>i</sub> = 0</div>
+
+  <pre>时间位置：  0 ........ T_prompt-1 | T_prompt ........ T_total-1
+cond：     [   prompt mel         |          0                ]
+mu：       [ prompt speech token  | generated speech token    ]</pre>
+
+  <p>实现见 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow.py#L385">flow.py 第 385 行</a>和 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow.py#L398">flow.py 第 398 行</a>。</p>
+
+  <h4>3.2.3 在 DiT 输入层逐帧拼接</h4>
+
+  <p><code>cond</code> 进入 DiT 后与 <i>x</i><sub>t</sub>、<code>mu</code> 和 speaker embedding 沿最后一个 feature/channel 维度拼接：</p>
+  <div class="equation"><i>h</i><sub>i</sub><sup>0</sup> = <i>W</i><sub>in</sub>[<i>x</i><sub>t,i</sub>; cond<sub>i</sub>; μ<sub>i</sub>; <i>e</i><sub>spk</sub>] + <i>b</i></div>
+
+  <pre>Prompt 区域：
+[x_t,i | prompt_mel_i | prompt_mu_i | speaker]
+
+生成区域：
+[x_t,i |      0       | target_mu_i | speaker]</pre>
+
+  <p>这不会增加 DiT 的序列长度。实现见 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/DiT/dit.py#L145">dit.py 第 145 行</a>和 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/DiT/dit.py#L91">dit.py 第 91 行</a>。</p>
+
+  <h4>3.2.4 Prompt 信息如何影响后续生成帧</h4>
+
+  <p>目标生成区域的 <code>cond_i</code> 虽然为零，但 prompt 前缀位置的隐藏状态已经直接接收了 prompt mel。随后，Transformer self-attention 把这些信息传播到后面的生成位置：</p>
+
+  <pre>prompt mel
+   │ 直接注入前缀位置
+   ▼
+prompt hidden states
+   │ self-attention / causal chunk attention
+   ▼
+后续生成位置</pre>
+
+  <ul>
+    <li>离线模式使用完整 attention，生成位置可以利用 prompt 前缀；</li>
+    <li>流式模式使用 chunk attention，后续 chunk 可以看到 prompt 与历史 chunk，但不能看到未来 chunk；</li>
+    <li>因果卷积位置编码也会沿时间方向把局部前缀信息传给后续位置。</li>
+  </ul>
+
+  <p>所以 prompt mel 不是在每个目标位置重复一份，而是先注入前缀位置，再通过序列建模影响后续 mel，帮助延续参考语音的音色、录音环境和声学风格。</p>
+
+  <h4>3.2.5 它是软条件，不是硬钳制</h4>
+
+  <p>CosyVoice 3 的 <code>CausalConditionalCFM</code> 没有在每个 ODE 步骤中执行：</p>
+  <pre>x_t[:, :, :prompt_len] = prompt_mel</pre>
+
+  <p>也就是说，prompt 区域的 ODE 状态没有被强制替换为真实 prompt mel。完整序列仍从噪声开始：</p>
+  <pre>x_t：  [noise prompt part | noise target part]
+cond： [real prompt mel   | zeros]</pre>
+
+  <p>训练时，提供 prompt 的样本在前缀区域满足 <code>cond = x1 = prompt mel</code>，而损失覆盖完整有效序列。因此模型会学习让最终生成的 prompt 区域接近真实 prompt：</p>
+  <div class="equation"><i>x</i>(1) = [P̂; Ŷ], &nbsp;&nbsp; P̂ ≈ P</div>
+  <p>但这里不是严格的 P̂ = P：速度场预测误差、10 步 Euler 积分误差以及 CFG 都可能造成差异，代码也没有在最终输出上执行逐元素覆盖。</p>
+
+  <p>DiT 在每个 ODE 步骤都把 prompt mel 当作不随时间变化的条件通道，并生成包含 prompt 区域和目标区域的完整 mel。积分结束后，代码裁掉前 <i>T</i><sub>p</sub> 个生成帧，只把新生成区域交给 vocoder：</p>
+  <pre>feat = feat[:, :, mel_len1:]</pre>
+
+  <p>实现见 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow.py#L412">flow.py 第 412 行</a>。因此，更准确的描述是 <strong>prefix acoustic conditioning（前缀声学条件）</strong>，而不是 hard inpainting/clamping（硬性补全或钳制）。</p>
+
+  <h4>3.2.6 训练时如何学习 prompt conditioning</h4>
+
+  <p>训练时从真实 mel 的开头随机选取一段作为 <code>cond</code>：</p>
+  <pre>conds = torch.zeros(feat.shape)
+index = random.randint(0, int(0.3 * feat_len))
+conds[i, :index] = feat[i, :index]</pre>
+
+  <ul>
+    <li>大约一半训练样本不提供 prompt mel；</li>
+    <li>其余样本从整段语音的前 0～30% 随机选取真实 mel 前缀；</li>
+    <li>Flow Matching 仍以整段真实 mel 为目标，模型由此学会利用声学前缀继续生成；</li>
+    <li>CFM 的 20% classifier-free condition dropout 还可能同时清零 <code>mu</code>、<code>cond</code> 和 speaker，以便推理时计算有条件与无条件速度。</li>
+  </ul>
+
+  <p>实现见 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow.py#L350">flow.py 第 350 行</a>和 <a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow_matching.py#L184">flow_matching.py 第 184 行</a>。</p>
+
+  <div class="summary">prompt mel → 写入 <code>cond</code> 的前缀位置 → 与 <i>x</i><sub>t</sub>、<code>mu</code>、speaker 逐帧拼接 → 通过 self-attention 影响后续生成</div>
+
+  <h3>3.3 时间 <i>t</i>：逐层调制</h3>
+
+  <p>与上述逐帧特征不同，标量时间 <i>t</i> 不会被拼入 <i>q</i><sub>i</sub>，也不会形成一个时间 prefix token。它经过正弦位置编码和 MLP，生成一个全局时间向量，再送入每一个 DiT Block 的 AdaLayerNorm，并在最终输出归一化层中再次使用。下一节给出具体过程。</p>
+
+  <p class="muted">代码：<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/DiT/dit.py#L76">输入融合</a>；<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/examples/libritts/cosyvoice3/conf/cosyvoice3.yaml#L64">DiT 配置</a>。</p>
+
+  <h2>4. 时间条件如何控制 DiT</h2>
+
+  <pre>正弦时间编码 → MLP → 1024 维时间向量</pre>
+
+  <p>每一个 DiT Block 都通过 AdaLayerNorm 使用该时间向量：</p>
+  <div class="equation">ĥ = LN(<i>h</i>) ⊙ (1 + <i>s</i>(<i>t</i>)) + <i>b</i>(<i>t</i>)</div>
+  <div class="equation"><i>h</i> ← <i>h</i> + <i>g</i><sub>attn</sub>(<i>t</i>) Attention(ĥ)</div>
+  <div class="equation"><i>h</i> ← <i>h</i> + <i>g</i><sub>ffn</sub>(<i>t</i>) FFN(ĥ)</div>
+
+  <p>因此，同一个 Transformer 在不同时间点会执行不同的变换：</p>
+  <ul>
+    <li><i>t</i> 较小时，输入更接近噪声，网络主要建立粗粒度语音结构；</li>
+    <li><i>t</i> 较大时，输入已接近 mel，网络更多地修正局部细节；</li>
+    <li>speech token 约束内容和粗粒度韵律；</li>
+    <li>speaker embedding 与 prompt mel 约束说话人音色和参考声学信息。</li>
+  </ul>
+
+  <p class="muted">代码：<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/DiT/modules.py#L500">DiTBlock 与 AdaLayerNorm 门控</a>。</p>
+
+  <h2>5. 推理：从噪声积分到 mel</h2>
+
+  <p>推理从高斯噪声开始，并求解常微分方程：</p>
+  <div class="equation"><i>x</i>(0) = <i>z</i>, &nbsp;&nbsp; d<i>x</i>/d<i>t</i> = <i>v</i><sub>θ</sub>(<i>x</i>, <i>t</i>, <i>c</i>)</div>
+
+  <p>CosyVoice 当前实现使用 10 步 Euler 积分：</p>
+  <div class="equation"><i>x</i><sub>k+1</sub> = <i>x</i><sub>k</sub> + (<i>t</i><sub>k+1</sub> − <i>t</i><sub>k</sub>) <i>v</i><sub>θ</sub>(<i>x</i><sub>k</sub>, <i>t</i><sub>k</sub>, <i>c</i>)</div>
+
+  <p>积分时间点经过 cosine 调度。完成 10 步后，<i>x</i>(1) 就是生成的 mel，随后交给 HiFT vocoder。</p>
+
+  <p>它与传统 DDPM 的主要区别是：</p>
+  <ul>
+    <li>DiT 输出的是速度 d<i>x</i>/d<i>t</i>，而不是 DDPM 中常见的噪声 ε；</li>
+    <li>推理求解确定性 ODE，不会在每一步重新加入随机噪声；</li>
+    <li>训练时可以直接采样任意 <i>t</i>，无需逐步执行前向加噪；</li>
+    <li>条件路径较直接，因此少量 ODE 步数也能工作。</li>
+  </ul>
+
+  <p>当前 <code>CausalConditionalCFM</code> 使用预先生成的固定噪声表，而不是每次重新采样噪声。这让流式分块和整段推理能够在相同位置使用一致的初始噪声。</p>
+
+  <p class="muted">代码：<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow_matching.py#L101">Euler 积分</a>；<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow.py#L404">10 步设置</a>；<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow_matching.py#L196">固定噪声</a>。</p>
+
+  <h2>6. Classifier-Free Guidance</h2>
+
+  <p>训练时以 20% 的概率同时清零 speech-token、speaker 和 prompt 条件，使同一个 DiT 同时学习有条件速度与无条件速度。推理时组合为：</p>
+
+  <div class="equation"><i>v</i><sub>CFG</sub> = (1 + <i>w</i>)<i>v</i><sub>cond</sub> − <i>w v</i><sub>uncond</sub></div>
+
+  <p>默认 <i>w</i> = 0.7，因此：</p>
+  <div class="equation"><i>v</i><sub>CFG</sub> = 1.7<i>v</i><sub>cond</sub> − 0.7<i>v</i><sub>uncond</sub></div>
+
+  <p>这会增强生成结果对 speech token、说话人音色和 prompt 的服从程度。</p>
+
+  <p class="muted">代码：<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow_matching.py#L184">训练条件丢弃</a>；<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow_matching.py#L117">推理 CFG 组合</a>。</p>
+
+  <h2>7. 流式生成</h2>
+
+  <ul>
+    <li>离线模式使用完整时间上下文；</li>
+    <li>流式模式使用 chunk attention mask，不能看到后续 chunk；</li>
+    <li>25 个 speech token 扩展成 50 个 mel frame，即大约 1 秒的声学 chunk；</li>
+    <li>输入侧允许 3 个 speech token 的有限前瞻；</li>
+    <li>因果卷积位置编码不会读取未来帧；</li>
+    <li>训练时随机切换流式和非流式模式，使同一模型兼容两种推理方式。</li>
+  </ul>
+
+  <p class="muted">代码：<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/flow.py#L334">统一流式/非流式训练</a>；<a href="https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/flow/DiT/dit.py#L163">chunk attention mask</a>。</p>
+
+  <h2>8. 为什么使用 Flow Matching + DiT</h2>
+
+  <ol>
+    <li><strong>训练目标简单：</strong>把生成建模转化为有监督的速度回归。</li>
+    <li><strong>采样步数较少：</strong>近似直线路径配合 ODE，仓库默认只使用 10 步。</li>
+    <li><strong>长时建模能力强：</strong>Transformer attention 适合捕获较长范围的韵律和声学关系。</li>
+    <li><strong>容易扩大容量：</strong>DiT 可以通过增加宽度、层数和 attention heads 扩展。</li>
+    <li><strong>时间条件自然：</strong>AdaLayerNorm 让每一层根据当前噪声阶段动态工作。</li>
+    <li><strong>兼容流式生成：</strong>因果卷积和 chunk attention mask 限制未来信息。</li>
+    <li><strong>条件控制统一：</strong>speech token、prompt mel 和 speaker embedding 共同控制同一个速度场。</li>
+  </ol>
+
+  <h2>9. 一句话总结</h2>
+
+  <p class="summary">CosyVoice 3 先让 LLM 给出“要说什么”的离散 speech token，再让时间条件化的 DiT 学习一个速度场，用 10 步 ODE 把高斯噪声运输成符合 token、音色和 prompt 的连续 mel 频谱。</p>
+</main>
+</body>
+</html>

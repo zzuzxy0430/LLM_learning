@@ -45,6 +45,7 @@ Transformer 基础组件
 | [06 · 对齐与评测](docs/06-alignment-evaluation/) | SFT、RLHF、DPO、Reward Model、Benchmark | 🟡 待补充 |
 | [07 · 工程实践](docs/07-engineering/) | vLLM、Transformers、部署、性能分析 | 🟡 待补充 |
 | [08 · 论文笔记](docs/08-papers/) | 经典与最新论文的结构化阅读笔记 | 🟡 待补充 |
+| [09 · Audio Model](docs/09-audio-model/) | Speech token、Flow Matching、DiT、流式 TTS 与声码器 | 🟢 进行中 |
 
 ## ⭐ 当前重点笔记
 
@@ -73,6 +74,16 @@ Transformer 基础组件
 - V3.2：DeepSeek Sparse Attention；
 - V4：百万上下文、Hybrid/Compressed Attention、mHC；
 - V4.1-Flash：新架构族与原生多模态，随官方技术材料继续补充。
+
+### [CosyVoice 3 中 Flow Matching 与 DiT 的原理](docs/09-audio-model/cosyvoice3-flow-matching-dit.md)
+
+结合 CosyVoice 3 源码梳理：
+
+- Conditional Flow Matching 的训练目标与 ODE 采样；
+- DiT 中时间条件与声学条件的不同注入方式；
+- speech token、`mu` 与 mel 的长度对齐；
+- prompt token、prompt mel 和 speaker embedding 的条件建模；
+- Classifier-Free Guidance 与流式推理。
 
 ## 🧠 推荐的笔记写法
 
