@@ -10,13 +10,14 @@
 StepAudio 3 Gen 的核心不是单纯把 TTS 做得更好，而是把 **TTS、Voice Design、歌声、音乐、音效、Vibe Speech 和混合音频**统一到同一套离散自回归框架中：
 
 - **StepAudio Tokenizer** 把通用音频编码成 12.5 Hz、16 层 RVQ 离散码；
-- **大 LLM** 只沿时间轴预测每帧的第一层码本 `c0`；
+- **大 LLM** 只沿时间轴预测每帧第一层码本 `c0`；
 - **小型 RVQ Code Predictor** 在当前帧内部继续预测 `c1...c15`；
-- 完整的 16 层 RVQ code 再由 **Causal Vocos Decoder** 解码成 waveform。
+- 完整 16 层 RVQ code 再由 **Causal Vocos Decoder** 解码为 waveform；
+- 历史完整 RVQ frame 又可以通过 **RVQ Adaptor** 重新注入 LLM，使后续生成不只依赖过去的 `c0`。
 
-最值得记住的一句话是：
+最值得记住的一句话：
 
-> **大 LLM 做时间维的语义/韵律规划，小 Transformer 做 RVQ 深度维的声学细节补全。**
+> **大 LLM 做时间维的高层规划，小 Transformer 做 RVQ 深度维的细节补全；完整声学结果再反馈给 LLM。**
 
 ---
 
@@ -54,7 +55,7 @@ flowchart LR
 
 1. **StepAudio Tokenizer**：把波形变成离散 RVQ code；
 2. **LLM Backbone**：负责文本能力、音频理解，以及 `c0` 的时间轴生成；
-3. **RVQ Code Predictor**：根据 LLM hidden state 和 `c0` 补齐 `c1...c15`。
+3. **RVQ Code Predictor**：根据当前 LLM hidden state 和 `c0` 补齐 `c1...c15`。
 
 ---
 
@@ -64,12 +65,10 @@ flowchart LR
 
 原始音频同时进入：
 
-- **SSL Encoder**：提供偏语义、内容、韵律的信息；
+- **SSL Encoder**：提供偏语义 / 内容 / 韵律的信息；
 - **Acoustic Encoder**：从 waveform 提取更底层的声学信息。
 
-两路特征融合、下采样后进入 RVQ。
-
-最终每个时间帧表示为：
+两路特征融合、下采样后进入 RVQ。每个时间帧最终表示为：
 
 ```text
 [c0, c1, c2, ..., c15]
@@ -84,9 +83,9 @@ flowchart LR
 | RVQ 层数 | 16 |
 | 每层 codebook size | 2048 |
 | 输出音频 | 24 kHz |
-| Decoder | causal Vocos-style decoder |
+| Decoder | fully causal Vocos-style decoder |
 
-因此一分钟音频在**时间轴上只有约 750 个 frame**：
+一分钟音频在**时间轴上只有约 750 个 frame**：
 
 ```text
 60 × 12.5 = 750
@@ -94,31 +93,29 @@ flowchart LR
 
 这使得主 LLM 做长音频自回归生成变得可行。
 
-### 3.2 每层不是“纯 semantic / 纯 acoustic”硬拆分
+### 3.2 不是硬拆成“semantic code + acoustic code”
 
-StepAudio 3 Gen 的 tokenizer 并不是简单规定：
+StepAudio 3 Gen 并不是简单规定：
 
 ```text
 c0 = semantic
 c1...c15 = acoustic
 ```
 
-论文强调，16 层 codebook 共同量化 semantic + waveform-level acoustic feature，因此每层都保留两类信息。
+论文强调，16 层 codebook 共同量化 semantic + waveform-level acoustic feature，因此各层都同时携带这两类信息。
 
-不过 RVQ 天然是 coarse-to-fine：前层必须先解释更多信号，后层主要补 residual，因此 `c0` 会更适合承担高层规划。
+不过 RVQ 天然是 coarse-to-fine：前层先解释主要信号，后层补 residual，因此 `c0` 更适合承担高层规划。
 
 训练上还用了：
 
 - **semantic distillation**：让量化表示保留 SSL teacher 的语义信息；
-- **quantizer dropout = 0.5**：训练时随机丢掉后续 residual codebook，迫使前层单独也保留足够信息。
+- **quantizer dropout = 0.5**：训练时随机丢掉后续 residual codebook，迫使浅层本身也保留足够信息。
 
 这为“LLM 只生成 `c0`”提供了基础。
 
 ---
 
-## 4. 最关键的改动：Time × Depth 两级自回归
-
-这是 StepAudio 3 Gen 的核心架构思想。
+## 4. Time × Depth：大模型沿时间，小模型沿 RVQ 深度
 
 ### 4.1 时间轴：大 LLM 只预测 `c0`
 
@@ -128,8 +125,6 @@ c1...c15 = acoustic
 c0_1 -> c0_2 -> c0_3 -> ... -> c0_T
 ```
 
-也就是沿**时间维**自回归。
-
 如果把 16 层 RVQ 全部 flatten 给大 LLM：
 
 ```text
@@ -138,7 +133,7 @@ c0_2, c1_2, ..., c15_2,
 ...
 ```
 
-那么 token rate 会从：
+主 LLM 的 audio token rate 会从：
 
 ```text
 12.5 token/s
@@ -150,13 +145,11 @@ c0_2, c1_2, ..., c15_2,
 12.5 × 16 = 200 token/s
 ```
 
-大 LLM 的序列长度和推理开销都会大幅上升。
+因此 StepAudio 把昂贵的长程建模只留给 `c0`。
 
 ### 4.2 深度轴：小 Predictor 补 `c1...c15`
 
-对第 t 帧，主 LLM 产生当前音频位置的 hidden state `h_t`，并预测 `c_{t,0}`。
-
-然后 4-layer causal Transformer 做：
+对第 t 帧，LLM 先得到当前 contextual hidden state `h_t`，预测 `c_{t,0}`，然后 4-layer causal Transformer 在 codebook depth 上继续：
 
 ```text
 (h_t, c0_t)
@@ -165,7 +158,7 @@ c0_2, c1_2, ..., c15_2,
 c1_t -> c2_t -> ... -> c15_t
 ```
 
-可以写成近似概率分解：
+概率分解可近似写成：
 
 ```text
 P(audio)
@@ -173,20 +166,117 @@ P(audio)
   × Π_t Π_k=1..15 P(c_t,k | h_t, c_t,<k)
 ```
 
-因此系统把两个难题拆开：
+二维 RVQ grid 可以画成：
 
-- **长程时间依赖**：大 LLM；
-- **单帧内部的高保真声学细节**：小 Transformer。
+```text
+                 时间 ->
+             t0   t1   t2   t3
+c0           ● -> ● -> ● -> ●      Big LLM
+             |    |    |    |
+c1           ●    ●    ●    ●
+             |    |    |    |
+c2           ●    ●    ●    ●      Small RVQ Predictor
+             |
+...          |
+c15          ●    ●    ●    ●
+
+             深度 ↓
+```
+
+所以所谓 **Time-Depth Modeling** 本质就是：
+
+- **Big LLM = time-axis modeling**；
+- **Small Transformer = RVQ-depth modeling**。
 
 ---
 
-## 5. RVQ Predictor 收到的是哪个 hidden state？
+## 5. 这个 Time-Depth 思路并不是 StepAudio 首创
 
-一个容易混淆的点是：
+如果只看“大模型沿时间，小模型沿量化深度”，StepAudio 3 Gen 属于一条很清楚的技术谱系。
 
-> RVQ Code Predictor **不是显式接收此前所有位置的 LLM hidden states**，而是接收**当前音频位置的一个 contextual hidden state `h_t`**。
+| 工作 | 时间 | 与 StepAudio 3 Gen 的关系 |
+|---|---:|---|
+| **RQ-Transformer** | 2022 | 空间/时间轴大 Transformer + residual-depth 小 Transformer，是 time-depth 架构的重要前身 |
+| **AudioLM** | 2022 | 语义 → coarse acoustic → fine acoustic 的分层生成思想 |
+| **VALL-E** | 2023 | 第一层 codec token 沿时间 AR，剩余 RVQ 层再补细节 |
+| **SpeechTokenizer** | 2023 | 用 SSL/HuBERT 蒸馏强化前层 RVQ 的 semantic 信息 |
+| **MusicGen** | 2023 | 同样处理多 RVQ stream，但用 delay pattern，而不是 depth Transformer |
+| **SoundStorm** | 2023 | RVQ coarse-to-fine，但时间轴上采用 masked/parallel decoding |
+| **Moshi / Mimi** | 2024 | 音频领域里与 StepAudio 最接近：Temporal Transformer + Depth Transformer；Mimi 同样是低帧率 RVQ，并强化浅层 semantic 信息 |
 
-数据流可以理解为：
+### 5.1 和 VALL-E 的区别
+
+VALL-E 的核心思想是：
+
+```text
+先把整句话的第一层生成完
+c0_1 -> c0_2 -> ... -> c0_T
+
+再补整条第二层、第三层……
+c1_1  c1_2 ... c1_T
+c2_1  c2_2 ... c2_T
+```
+
+它已经建立了“第一层负责主要结构、后续 residual 层补细节”的分工。
+
+StepAudio 更强调每一个时间位置内部的 **depth autoregression**：
+
+```text
+当前 frame:
+c0_t -> c1_t -> c2_t -> ... -> c15_t
+```
+
+因此，如果问“LLM 只预测第一层是不是很像 VALL-E”，答案是**是**；但如果问“StepAudio 这套 time-depth 的具体骨架最像谁”，则 **Moshi / RQ-Transformer 更接近**。
+
+### 5.2 和 Moshi 的相似性更直接
+
+Moshi 可以概括为：
+
+```text
+Temporal Transformer
+        |
+      h_t
+        |
+Depth Transformer
+        |
+q1 -> q2 -> ... -> qK
+```
+
+StepAudio：
+
+```text
+LLM Backbone
+      |
+     h_t
+      |
+预测 c0
+      |
+RVQ Code Predictor
+      |
+c1 -> c2 -> ... -> c15
+```
+
+两者都把：
+
+> **长程时间依赖交给大模型，当前 frame 内的多码本细节交给小模型。**
+
+因此 StepAudio 的新意更适合放在“统一 general audio 表征 + RVQ Adaptor + 干扰控制训练 + 完整声学反馈闭环”上，而不是把 time-depth 本身视为从零开始的新结构。
+
+参考：
+
+- RQ-Transformer: https://arxiv.org/abs/2203.01941
+- VALL-E: https://arxiv.org/abs/2301.02111
+- AudioLM: https://arxiv.org/abs/2209.03143
+- SpeechTokenizer: https://arxiv.org/abs/2308.16692
+- MusicGen: https://arxiv.org/abs/2306.05284
+- SoundStorm: https://arxiv.org/abs/2305.09636
+- Moshi: https://arxiv.org/abs/2410.00037
+
+---
+
+## 6. RVQ Predictor 收到的是哪个 hidden state？
+
+RVQ Code Predictor **不是显式接收此前所有位置的 LLM hidden states**，而是接收当前音频位置的一个 contextual hidden state `h_t`。
 
 ```text
 历史文本 + 历史音频 frame
@@ -203,21 +293,17 @@ P(audio)
         c1_t ... c15_t
 ```
 
-虽然只传一个 `h_t`，但 `h_t` 通过 causal self-attention / KV cache 已经聚合了此前上下文，因此它不是“只包含最后一个 token 局部信息”的向量。
+虽然只给 Predictor 一个 `h_t`，但 `h_t` 经过 causal self-attention / KV cache 已经聚合了此前上下文，因此不是“只包含最后一个 token 局部信息”的向量。
 
-换句话说：
-
-> **LLM 负责把长历史压进当前 contextual state；RVQ Predictor 不再重复 attention 整个历史。**
+> **LLM 负责把长历史压进当前 contextual state；RVQ Predictor 不需要再次 attention 全部历史。**
 
 ---
 
-## 6. 为什么 LLM Head 还会输出 Text Tokens？
+## 7. 为什么 LLM Head 还会输出 Text Tokens？
 
-因为 StepAudio 3 Gen 不是一个只会 TTS 的声学模型，而是保留了完整文本能力的 Audio LLM。
+StepAudio 3 Gen 不是只会 TTS 的声学模型，而是保留文本能力的 Audio LLM。
 
-第 0 层 codebook 的 2048 个 token 被加入主 LLM vocabulary，并和文本 token 共用 LM head。
-
-可理解为：
+第一层 codebook 的 2048 个 token 被加入主 LLM vocabulary，并和文本 token 共用 LM head：
 
 ```text
 Joint vocabulary
@@ -225,7 +311,7 @@ Joint vocabulary
 └── 2048 codebook-0 audio tokens
 ```
 
-所以同一个 LM head 可以生成：
+因此同一个 LM head 可以生成：
 
 ```text
 Text Token
@@ -233,7 +319,7 @@ Text Token
 Audio c0 Token
 ```
 
-这并不意味着每一步同时生成一份文字和一份音频，而是当前上下文决定下一 token 属于哪个区域。
+这不意味着每一步同时生成文字和音频，而是当前 instruction / role / sequence format 决定下一 token 应该来自哪一类。
 
 例如：
 
@@ -245,68 +331,266 @@ Audio c0 Token
 -> 输出 c0 audio tokens
 ```
 
-因此 StepAudio 3 Gen 能把 text / audio 放入同一个 autoregressive stream，并支持交错上下文。
-
-### 推理时如何知道输出 Text 还是 `c0`？
-
-模型在训练中通过 instruction、角色格式和监督数据学到当前应该生成哪种 token。
-
-联合 softmax 的概念可以理解为：
-
-```text
-LM hidden state
-      |
-      v
-shared LM head
-      |
-      +-- logits over text vocabulary
-      |
-      +-- logits over 2048 c0 tokens
-```
-
-如果采样到 `c0` token，系统就触发 RVQ Code Predictor，补齐当前 frame 的 `c1...c15`。
-
-论文说明了共享主 LM head；但技术报告没有把线上推理是否针对具体任务额外使用 vocabulary mask 讲得非常具体，因此不要把“完全自由采样”当成已确认的服务端实现细节。
+论文说明了共享主 LM head；但技术报告没有完整披露线上服务是否会针对具体任务额外使用 vocabulary mask，因此不要把“完全自由采样整个联合词表”当成已确认的工程实现。
 
 ---
 
-## 7. RVQ Adaptor：把完整声学信息重新注入 LLM
+## 8. RVQ Adaptor + Token Embedding 到底是什么意思？
 
-音频输入侧不是只给 LLM `c0`。
+这是理解 StepAudio 3 Gen 很关键的一点。
 
-对已有音频 frame：
+### 8.1 `c0` 有一条普通 LLM Token Embedding 路径
+
+因为 `c0` codebook 已经加入 LLM vocabulary，所以一个 `c0` token 可以像普通文字 token 一样做 embedding lookup：
 
 ```text
-[c0, c1, ..., c15]
+c0 = 317
+   |
+LLM Token Embedding
+   |
+E_token(c0)
+```
+
+这条路径的意义是：
+
+> **让 audio 的第一层 token 真正成为 LLM 自回归序列的一部分。**
+
+### 8.2 完整 16 层 RVQ 还有另一条 Audio Embedding 路径
+
+对一个已知音频 frame：
+
+```text
+c0  -> E0(c0)  --\
+c1  -> E1(c1)    \
+c2  -> E2(c2)     +--> SUM --> RVQ Adaptor --> e_audio
+...                /
+c15 -> E15(c15) --/
+```
+
+即每个 codebook 有自己的 embedding table，然后把 16 个向量求和：
+
+```text
+e_RVQ = Σ_k E_k(c_k)
+```
+
+再通过 RVQ Adaptor。
+
+最终送入 LLM 的 audio-position embedding 可以理解为：
+
+```text
+x_t = E_token(c_t,0)
+      + A( Σ_k=0..15 E_k(c_t,k) )
+```
+
+其中 `A` 就是 RVQ Adaptor。
+
+### 8.3 为什么 `c0` 看起来出现了两次？
+
+是的，概念上 `c0` 同时参与：
+
+```text
+c0 -> LLM token embedding
+```
+
+和：
+
+```text
+c0 -> RVQ codebook-0 embedding
+      + c1...c15
+      -> RVQ Adaptor
+```
+
+两条支路职责不同：
+
+- **Token Embedding(c0)**：告诉 LLM “这是哪个主序列 audio token”；
+- **RVQ Adaptor(c0...c15)**：告诉 LLM “这一帧完整的声学状态是什么”。
+
+### 8.4 为什么不直接把 16 个 RVQ embedding 的和塞进 LLM？
+
+因为 pretrained LLM 原有 token embedding 已经形成稳定分布；新建的 16 个 audio codebook embedding 直接相加，尺度和统计分布可能严重 mismatch。
+
+RVQ Adaptor 是一个 token-wise residual module，并采用 **zero initialization**。训练初期：
+
+```text
+A(e_RVQ) ≈ 0
+```
+
+因此：
+
+```text
+x_t ≈ E_token(c0)
+```
+
+不会刚开始就让随机初始化的多码本声学信息冲击 pretrained LLM；之后 Adaptor 再逐渐学会把完整声学信息注入主干。
+
+这也是论文中 RVQ Adaptor ablation 对 ASR / audio understanding / speech translation 提升很大的原因之一。
+
+---
+
+## 9. 一个很重要的共同点：StepAudio 与 VoxCPM 都有 Acoustic Feedback Loop
+
+这是 StepAudio 3 Gen 和 VoxCPM 很值得放在一起看的地方。
+
+严格来说，两者都不是“把最终 waveform 再送回 LM”，而是：
+
+> **把已经生成出来的完整声学 latent / code 重新编码成 LM 能吃的 embedding，再作为下一步历史上下文。**
+
+### 9.1 StepAudio 3 Gen
+
+当前第 t 帧：
+
+```text
+LLM h_t
+  |
+ c0_t
+  |
+RVQ Predictor
+  |
+[c0...c15]_t
+```
+
+生成完整 RVQ frame 后，历史音频在下一步可以通过：
+
+```text
+[c0...c15]_t
       |
-16 个 codebook embeddings 求和
+16-codebook embeddings
       |
-      v
- RVQ Adaptor
+     sum
       |
-      +
-normal token embedding
+RVQ Adaptor
       |
-      v
++ c0 token embedding
+      |
      LLM
+      |
+    h_t+1
 ```
 
-RVQ Adaptor 是 token-wise residual module，并采用**零初始化**。
+因此后续 LLM 不只是知道：
 
-目的有两个：
+```text
+“我上一帧计划了哪个 c0”
+```
 
-1. 让 LLM 输入侧能够看到完整的多码本声学信息，而不是只看到 `c0`；
-2. 避免随机初始化的音频 embedding 直接破坏 pretrained LLM 原有表示分布。
+还可以得到：
 
-一个很重要的理解是：
+```text
+“上一帧最终完整生成成了什么声学状态”
+```
 
-> **输出侧只让大 LLM 预测 `c0`，但输入侧历史音频可以通过 RVQ Adaptor 把完整 `c0...c15` 信息重新注入 LLM。**
+### 9.2 VoxCPM
 
-因此后续帧的 `h_t` 可以间接利用过去更完整的声学状态。
+VoxCPM 是连续 latent 路线。其生成过程可写成：
+
+```text
+TSLM -> FSQ semantic/prosodic skeleton
+              +
+             RALM
+              |
+           LocDiT
+              |
+        VAE latent z_i
+              |
+           LocEnc
+              |
+ acoustic embedding E_i
+              |
+          back to TSLM
+```
+
+论文中历史声学上下文写成：
+
+```text
+E_<i = LocEnc(Z_<i)
+```
+
+TSLM 在生成下一 latent patch 时条件于 `T` 与 `E_<i`。
+
+参考：VoxCPM https://arxiv.org/abs/2509.24650
+
+### 9.3 两者可以这样对齐
+
+| | StepAudio 3 Gen | VoxCPM |
+|---|---|---|
+| 主规划模型 | LLM Backbone | TSLM |
+| 高层/粗规划 | `c0` | TSLM hidden + FSQ |
+| 声学细节模型 | RVQ Predictor | RALM + LocDiT |
+| 最终生成表示 | 完整 16 层 RVQ frame | continuous VAE latent patch `z_i` |
+| 历史重新编码 | RVQ embeddings + RVQ Adaptor | LocEnc |
+| 反馈给 | 下一步 LLM | 下一步 TSLM |
+| 直接反馈 waveform？ | 否 | 否 |
+
+两者共同思想可以概括为：
+
+> **LM 不只记住“我打算生成什么”，还重新感知“我实际生成成了什么”。**
+
+这对长程连续语音尤其重要，因为 renderer / acoustic model 的实际输出可能与高层 planning state 有细微偏差；若主 LM 永远只看自己的粗计划，偏差可能逐步积累。
+
+因此 RVQ Adaptor 不应只理解成“外部音频理解接口”，它同时也是一个很重要的 **generation-history acoustic feedback interface**。
 
 ---
 
-## 8. 为什么不用 Diffusion / Flow Matching？
+## 10. Encoder 和 Decoder 都是因果的吗？
+
+不是这么简单。
+
+### 10.1 Decoder：论文明确是 fully causal
+
+StepAudio Tokenizer 的 Vocos-style decoder 被明确设计为 **fully causal**，用于增量恢复 waveform。
+
+这对流式生成非常重要：
+
+```text
+LLM -> c0_t
+       |
+RVQ Predictor -> c1...c15_t
+       |
+Causal Vocos
+       |
+立即产生当前 waveform segment
+```
+
+如果 decoder 依赖未来 audio token，那么即使 LLM 当前 frame 已经生成出来，也还要等待未来 frame，首包和流式延迟都会变差。
+
+### 10.2 Encoder：论文没有给出同样的 fully-causal 保证
+
+编码侧是：
+
+```text
+waveform
+  |\
+  | \-> SSL Encoder
+  |----> Acoustic Encoder
+          |
+      Feature Fusion
+          |
+      Downsample + RVQ
+```
+
+论文没有明确声明整个 encoder 是 fully causal，也没有证明每个编码位置都不看未来帧。
+
+因此正确说法是：
+
+> **不能根据 causal decoder 推断 tokenizer encoder 也是 causal。**
+
+尤其 SSL branch 若使用常见双向上下文 SSL encoder，则整体编码路径更不能自动视为 strict streaming encoder；但论文没有披露足够细节，因此这里应保持为“未确认”，而不是武断说一定非因果。
+
+### 10.3 系统中还有另外两个 causal
+
+不要混淆三种 causal：
+
+1. **LLM Backbone**：decoder-only causal，沿时间生成 `c0`；
+2. **RVQ Code Predictor**：causal Transformer，沿 RVQ depth 生成 `c1...c15`；
+3. **Vocos Decoder**：fully causal，沿时间把 RVQ frame 解成 waveform。
+
+所以可以说：
+
+> **StepAudio 的音频“生成链路”基本是因果的，但论文并没有证明“Tokenizer Encoder + Decoder 全链路都严格因果”。**
+
+---
+
+## 11. 为什么不用 Diffusion / Flow Matching？
 
 近期很多通用音频系统大致是：
 
@@ -334,7 +618,7 @@ codec decoder
 waveform
 ```
 
-也就是**纯离散自回归生成 + causal codec decoder**，没有额外的大型 diffusion / flow acoustic renderer。
+也就是**纯离散自回归生成 + causal codec decoder**，没有额外大型 diffusion / flow acoustic renderer。
 
 优点：
 
@@ -347,11 +631,11 @@ waveform
 
 - 仍然存在 autoregressive latency；
 - 音质上限受 tokenizer / codec reconstruction quality 影响；
-- 多层 RVQ 的训练与梯度平衡比较复杂。
+- 多层 RVQ 的训练与梯度平衡更复杂。
 
 ---
 
-## 9. Progressive Pretraining：重点是“别把原 LLM 训坏”
+## 12. Progressive Pretraining：重点是“别把原 LLM 训坏”
 
 论文把模态干扰作为核心问题，采用四阶段渐进式预训练，整个预训练约消耗 **2.7T LLM tokens**。
 
@@ -371,7 +655,7 @@ waveform
 
 开始训练 TTS / interleaved audio generation。
 
-最关键的技巧：
+关键技巧：
 
 ```text
 LLM hidden state
@@ -381,7 +665,7 @@ LLM hidden state
 RVQ Code Predictor
 ```
 
-因为 `c1...c15` 一共有 15 层声学 loss，如果 Predictor 还是随机初始化时就直接全部反传到 LLM，容易让声学梯度破坏已经对齐好的主干表示。
+因为 `c1...c15` 一共有 15 层声学 loss。如果 Predictor 还是随机初始化时就把这些 loss 全部反传给 LLM，容易让大批声学梯度破坏已经对齐好的主干表示。
 
 因此先让 Predictor 独立学会 acoustic completion。
 
@@ -392,15 +676,15 @@ RVQ Code Predictor
 - 移除 stop-gradient；
 - 用较低学习率联合训练；
 - 扩大上下文长度；
-- 降低 residual depth loss 的相对权重。
+- 降低 residual-depth loss 的相对权重。
 
-整体思想是：
+整体思想：
 
 > **先隔离学习，再谨慎联合优化。**
 
 ---
 
-## 10. 数据规模与后训练
+## 13. 数据规模与后训练
 
 论文披露的几个量级：
 
@@ -411,9 +695,7 @@ RVQ Code Predictor
 | SFT 总音频 | 约 5,000 小时 |
 | 其中自然 conversational speech | 约 1,500 小时 |
 
-后训练还使用了 GRPO。
-
-大致流程：
+后训练还使用了 GRPO。大致流程：
 
 ```text
 instruction
@@ -429,7 +711,7 @@ LLM judge -> instruction consistency score
 GRPO update
 ```
 
-其目的不是只优化“音色像不像”，而是让生成结果同时满足：
+目标不仅是音色或音质，还包括：
 
 - 指令一致性；
 - 内容正确性；
@@ -437,7 +719,7 @@ GRPO update
 
 ---
 
-## 11. StepAudio 3 Gen 相比传统 TTS 的本质变化
+## 14. 从传统 TTS 到 General Audio Generator
 
 传统 TTS 更接近：
 
@@ -469,7 +751,7 @@ Text / Audio Context
 Speech / Singing / Music / SFX / Mixed Audio
 ```
 
-因此它的目标已经从：
+因此目标已经从：
 
 > “把文本读出来”
 
@@ -479,37 +761,22 @@ Speech / Singing / Music / SFX / Mixed Audio
 
 ---
 
-## 12. 和 VALL-E / MusicGen 一类方法的关系
-
-`c0` 做 coarse planning、后续 residual codebook 做细节补全，并不是完全新的思想；VALL-E、MusicGen、Moshi 等 codec-LM 都探索过多码本音频 token 的分层或交错建模。
-
-StepAudio 3 Gen 更值得关注的是它的组合方式：
-
-- **时间轴**只交给大 LLM 的 `c0`；
-- **codebook 深度轴**交给轻量 causal Transformer；
-- 完整 RVQ 历史又通过 Adaptor 回流到 LLM 输入侧；
-- 再通过 progressive pretraining + gradient detach 控制声学 loss 对文本 LLM 的干扰。
-
-所以它不是简单的“VALL-E 再做一遍”，而是把多码本 codec-LM 设计系统化到通用 Audio LLM 中。
-
----
-
-## 13. 实验结果怎么看
+## 15. 实验结果怎么看
 
 论文报告 StepAudio 3 Gen 在 TTS human-likeness、Voice Design 等评测上表现很强，同时展示了音乐、歌声、音效和混合场景生成能力。
 
-但阅读结果时需要注意：
+阅读结果时需要注意：
 
 - TTS 的一部分结果来自论文自建中文 human-likeness Arena；
 - Voice Design 有相对系统化的 instruction-following 评测；
 - 音乐、复杂音效、Vibe Speech 更大程度仍以 capability demo 为主；
 - 论文没有完整披露训练和在线推理成本。
 
-因此最有说服力的贡献首先还是**架构和训练 recipe**，而不是简单看一个总榜单数字。
+因此最有说服力的贡献首先还是**架构组合和训练 recipe**，而不应只看某个总榜单数字。
 
 ---
 
-## 14. 开源状态（截至 2026-09-16）
+## 16. 开源状态（截至 2026-09-16）
 
 目前可以确认：
 
@@ -524,14 +791,18 @@ StepAudio 3 Gen 更值得关注的是它的组合方式：
 
 ---
 
-## 15. 最值得记住的 5 个点
+## 17. 最值得记住的 7 个点
 
-1. **12.5 Hz、16×2048 RVQ**：很低的时间帧率，使长音频 LLM 建模可行；
+1. **12.5 Hz、16×2048 RVQ**：极低时间帧率，使长音频 LLM 建模可行；
 2. **Time × Depth factorization**：LLM 预测 `c0`，小 Transformer 补 `c1...c15`；
-3. **Shared LM Head**：text token 和 `c0` token 位于统一自回归输出空间；
-4. **RVQ Adaptor**：历史音频的完整 16 层声学信息可以回注到 LLM；
-5. **Interference-aware training**：zero-init adaptor、文本 replay、predictor gradient detach、joint cool-down 都围绕“加入音频能力但不毁掉 LLM”展开。
+3. **这个结构不是首创**：VALL-E 已有“第一层 + residual”分工，Moshi / RQ-Transformer 与具体 time-depth 骨架更接近；
+4. **Shared LM Head**：text token 和 `c0` token 位于统一自回归输出空间；
+5. **RVQ Adaptor + Token Embedding**：`c0` 作为主序列 token，同时完整 `c0...c15` 通过 Adaptor 注入声学信息；
+6. **Acoustic feedback loop**：历史完整 RVQ frame 会重新变成 LLM 可消费的表示，这一点和 VoxCPM 的 `LocEnc(Z_<i>) -> TSLM` 很像；
+7. **Interference-aware training**：zero-init adaptor、文本 replay、predictor gradient detach、joint cool-down 都围绕“获得音频能力但不毁掉 LLM”。
 
-如果只记一句：
+如果只记两句话：
 
-> **StepAudio 3 Gen 把“语言/时间规划”和“声学细节生成”拆成两个尺度：大模型负责时间，小模型负责码本深度。**
+> **StepAudio 3 Gen 的主干并不新在“LLM 只预测第一层”，真正值得看的是它如何把成熟的 time-depth codec-LM 结构扩展成 general audio model。**
+
+> **相比只看自己的粗规划，StepAudio 还把最终完整声学表示重新反馈给 LLM；这和 VoxCPM 的历史 acoustic latent feedback 是一个非常值得对照的共同点。**
