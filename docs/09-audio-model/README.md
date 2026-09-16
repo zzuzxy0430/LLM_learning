@@ -17,6 +17,18 @@
 - 与 VALL-E / MusicGen 以及 Diffusion / Flow Matching 路线的关系；
 - 数据规模、GRPO、实验结果与当前开源状态。
 
+### [VoxCPM：Tokenizer-Free TTS 的分层语义-声学建模](voxcpm.md)
+
+围绕 VoxCPM 的 tokenizer-free 与 hierarchical semantic-acoustic modeling，重点整理：
+
+- AudioVAE continuous latent、TSLM、FSQ、RALM 与 LocDiT 的完整链路；
+- 为什么 `tokenizer-free` 并不等于完全 pure continuous；
+- FSQ 作为 semi-discrete bottleneck 的真实作用；
+- 历史连续 acoustic latent 如何经 LocEnc 得到 `E_<i`，重新反馈给后续生成；
+- 去掉 FSQ、RALM、`E_<i`、`h_residual` 的关键消融结果；
+- 为什么论文不能把全部收益简单归因于“没有 tokenizer”；
+- VoxCPM 与 StepAudio 3 Gen 在 coarse semantic path + fine acoustic residual path 上的共性与差异。
+
 ### [CosyVoice 3 中 Flow Matching 与 DiT 的原理](cosyvoice3-flow-matching-dit.md)
 
 从 CosyVoice 3 源码出发，梳理以下内容：
