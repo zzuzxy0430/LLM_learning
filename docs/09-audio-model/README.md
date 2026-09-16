@@ -4,6 +4,19 @@
 
 ## 已整理笔记
 
+### [StepAudio 3 Gen：离散自回归统一音频生成](stepaudio-3-gen.md)
+
+围绕 StepAudio 3 Gen 的核心设计，梳理以下内容：
+
+- 12.5 Hz、16×2048 RVQ 的 StepAudio Tokenizer；
+- LLM 沿时间轴只预测 `c0`、轻量 Predictor 沿码本深度补 `c1...c15`；
+- RVQ Predictor 使用当前音频位置 `h_t` 而不是显式读取全部历史 hidden states；
+- text token 与 `c0` 共用主 LM Head 的联合输出空间；
+- RVQ Adaptor 如何把完整 16 层声学信息重新注入 LLM；
+- 四阶段 progressive pretraining、gradient detach 与 joint cool-down；
+- 与 VALL-E / MusicGen 以及 Diffusion / Flow Matching 路线的关系；
+- 数据规模、GRPO、实验结果与当前开源状态。
+
 ### [CosyVoice 3 中 Flow Matching 与 DiT 的原理](cosyvoice3-flow-matching-dit.md)
 
 从 CosyVoice 3 源码出发，梳理以下内容：
