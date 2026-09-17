@@ -45,17 +45,17 @@ Prompt A
 
 因此：
 
-$$
+```math
 1568\times16=25,088
-$$
+```
 
 即一个 step 约有 25K 条 trajectories。
 
 如果每 step 约 2B token：
 
-$$
+```math
 \frac{2\times10^9}{25088}\approx79.7K
-$$
+```
 
 平均每条 trajectory 已经是数万到约 10 万 token 的量级。
 
@@ -80,17 +80,17 @@ rollout 16 → reward = 0
 
 得到：
 
-$$
+```math
 R_A=[1,0,0,1,\dots,0]
-$$
+```
 
 这就是该 prompt 在当前 policy 下 16 次尝试形成的 **经验 reward distribution**。
 
 如果成功 5 次：
 
-$$
+```math
 passrate=\frac5{16}=0.3125
-$$
+```
 
 它不是一个额外神经网络输出的概率分布，而只是：
 
@@ -117,9 +117,9 @@ Prompt A → fail
 0 0 0 0 0 0 0 0
 ```
 
-$$
+```math
 p\approx0
-$$
+```
 
 ### 情况 B：全成功
 
@@ -128,9 +128,9 @@ $$
 1 1 1 1 1 1 1 1
 ```
 
-$$
+```math
 p\approx1
-$$
+```
 
 ### 情况 C：有时成功有时失败
 
@@ -139,9 +139,9 @@ $$
 1 0 1 0 0 1 0 1
 ```
 
-$$
+```math
 p\approx0.5
-$$
+```
 
 第三种情况特别有 RL 学习价值，因为同一个初始任务下：
 
@@ -193,28 +193,28 @@ reject         accept
 
 以最简单的 GRPO 为例：
 
-$$
+```math
 A_i=
 \frac{R_i-\mu_R}{\sigma_R+\epsilon}
-$$
+```
 
 如果 16 个 reward 全一样：
 
-$$
+```math
 R=[0,0,\dots,0]
-$$
+```
 
 或者：
 
-$$
+```math
 R=[1,1,\dots,1]
-$$
+```
 
 那么：
 
-$$
+```math
 \sigma_R=0
-$$
+```
 
 组内没有 relative signal。
 
@@ -222,15 +222,15 @@ $$
 
 对于 binary reward：
 
-$$
+```math
 \mathrm{Var}(R)=p(1-p)
-$$
+```
 
 当：
 
-$$
+```math
 p=0.5
-$$
+```
 
 方差最大。
 
@@ -244,17 +244,17 @@ $$
 
 假设 trainer 最终需要：
 
-$$
+```math
 1568\text{ 个有效 prompt groups}
-$$
+```
 
 scheduler 先拿 2000 个候选 prompt。
 
 每题 rollout 16 次：
 
-$$
+```math
 2000\times16=32000
-$$
+```
 
 条 trajectories。
 
@@ -286,9 +286,9 @@ required = 1568
 
 还差：
 
-$$
+```math
 1568-1400=168
-$$
+```
 
 scheduler 就继续异步补采新的 prompts。
 
@@ -310,9 +310,9 @@ scheduler 就继续异步补采新的 prompts。
 
 如果一个被接受的 group 保留完整的 16 个 rollouts：
 
-$$
+```math
 1568\times16=25,088
-$$
+```
 
 所以真正参与 policy update 的 sequence batch size 是约 25K，而不是 1568。
 
@@ -365,15 +365,15 @@ trajectory #7
 
 最终得到连续 reward：
 
-$$
+```math
 R_7=0.76
-$$
+```
 
 于是 16 条 trajectory 可能形成：
 
-$$
+```math
 R=[0.92,0.10,0.81,0.23,0.76,\dots]
-$$
+```
 
 目前官方还没有公开这些 reward 的完整加权公式。
 
@@ -398,9 +398,9 @@ turn 50
 
 如果：
 
-$$
+```math
 A_7=+0.8
-$$
+```
 
 最粗粒度做法等价于：
 
@@ -490,17 +490,17 @@ Fully Async 会带来新问题。
 
 某个 trajectory 开始时使用：
 
-$$
+```math
 \pi_{\theta_t}
-$$
+```
 
 它跑了很久。
 
 等完成并准备训练时，trainer 可能已经更新到：
 
-$$
+```math
 \pi_{\theta_{t+k}}
-$$
+```
 
 于是：
 
@@ -512,19 +512,19 @@ rollout policy ≠ current training policy
 
 PPO / importance sampling 会计算：
 
-$$
+```math
 r_t=
 \frac{\pi_{new}(a_t|s_t)}
 {\pi_{old}(a_t|s_t)}
-$$
+```
 
 实践中：
 
-$$
+```math
 r_t=\exp(
 \log\pi_{new}-\log\pi_{old}
 )
-$$
+```
 
 如果两者差得太远，说明这条旧 trajectory 对当前 policy 已经不够 on-policy。
 
@@ -670,37 +670,37 @@ General reasoning RL
 
 最终无论系统多复杂，policy update 仍然回到：
 
-$$
+```math
 \log\pi_\theta(a_t|s_t)
-$$
+```
 
 假设一条 trajectory 的 advantage 为：
 
-$$
+```math
 A_i
-$$
+```
 
 最基础形式：
 
-$$
+```math
 L_i=-A_i\sum_t\log\pi_\theta(a_{i,t}|s_{i,t})
-$$
+```
 
 如果使用 PPO-style ratio：
 
-$$
+```math
 r_{i,t}=\frac{\pi_\theta(a_{i,t}|s_{i,t})}{\pi_{old}(a_{i,t}|s_{i,t})}
-$$
+```
 
 则：
 
-$$
+```math
 L_i=-\sum_t
 \min\left(
  r_{i,t}A_i,
  \operatorname{clip}(r_{i,t},1-\epsilon,1+\epsilon)A_i
 \right)
-$$
+```
 
 所以即使 MiMo 有：
 
