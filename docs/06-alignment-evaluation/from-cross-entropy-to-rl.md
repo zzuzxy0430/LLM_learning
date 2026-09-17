@@ -16,9 +16,9 @@ RL 的监督信号则变成：
 
 因此二者底层都在操作同一个量：
 
-$$
+```math
 \log \pi_\theta(y_t\mid s_t)
-$$
+```
 
 区别只是：
 
@@ -48,23 +48,23 @@ $$
 
 softmax 后得到：
 
-$$
+```math
 P(2)=0.665,\quad P(3)=0.245,\quad P(4)=0.090
-$$
+```
 
 对于 target token `2`：
 
-$$
+```math
 L_{CE}=-\log P_\theta(2)
-$$
+```
 
 对整段序列：
 
-$$
-L_{SFT}=-\sum_{t=1}^{T}\log \pi_\theta(y_t^*\mid x,y_{<t}^*)
-$$
+```math
+L_{SFT}=-\sum_{t=1}^{T}\log \pi_\theta(y_{t}^{\ast}\mid x,y_{<t}^{\ast})
+```
 
-其中 $y_t^*$ 是数据集提供的 ground-truth token。
+其中 $`y_{t}^{\ast}`$ 是数据集提供的 ground-truth token。
 
 ### 直觉
 
@@ -109,9 +109,9 @@ token_log_probs = log_probs_all.gather(
 
 数学上：
 
-$$
+```math
 \mathrm{CE}(\mathrm{logits},y)=-\log P(y)
-$$
+```
 
 所以：
 
@@ -140,9 +140,9 @@ Q: 17 × 23 = ?
 
 环境或 verifier 最后给：
 
-$$
+```math
 R=1
-$$
+```
 
 这里没有任何人告诉模型：
 
@@ -154,19 +154,19 @@ $$
 
 但是模型知道自己每一步实际采样 token 的概率：
 
-$$
+```math
 \pi_\theta(y_t\mid s_t)
-$$
+```
 
 于是最基础的 Policy Gradient loss 可以写成：
 
-$$
+```math
 \boxed{
 L_{PG}=-A\sum_t\log \pi_\theta(y_t\mid s_t)
 }
-$$
+```
 
-其中 $A$ 是 Advantage。
+其中 $`A`$ 是 Advantage。
 
 可以先把它理解成：
 
@@ -178,15 +178,15 @@ $$
 
 假设：
 
-$$
+```math
 A=+1
-$$
+```
 
 则：
 
-$$
+```math
 L=-\sum_t\log\pi_\theta(y_t)
-$$
+```
 
 这和 SFT 的 Cross Entropy 形式非常像。
 
@@ -208,21 +208,21 @@ $$
 
 假设模型生成了一个失败 trajectory：
 
-$$
+```math
 A=-1
-$$
+```
 
 那么：
 
-$$
+```math
 L=-(-1)\log p(y)=\log p(y)
-$$
+```
 
-梯度下降会使 $\log p(y)$ 更小，也就是：
+梯度下降会使 $`\log p(y)`$ 更小，也就是：
 
-$$
+```math
 p(y)\downarrow
-$$
+```
 
 所以：
 
@@ -239,45 +239,45 @@ $$
 
 Cross Entropy：
 
-$$
+```math
 L_{CE}=-\log p(y)\ge 0
-$$
+```
 
-因为 $0<p\le1$。
+因为 $`0<p\le1`$。
 
 但 RL：
 
-$$
+```math
 L_{RL}=-A\log p(y)
-$$
+```
 
-如果 $A<0$，那么 loss contribution 可以小于 0。
+如果 $`A<0`$，那么 loss contribution 可以小于 0。
 
 例如：
 
-$$
+```math
 p=0.2,\quad \log p=-1.609
-$$
+```
 
 若：
 
-$$
+```math
 A=-1
-$$
+```
 
 则：
 
-$$
+```math
 L=-(-1)(-1.609)=-1.609
-$$
+```
 
 完全正常。
 
 优化器真正关心的是：
 
-$$
+```math
 \frac{\partial L}{\partial \theta}
-$$
+```
 
 而不是 loss 是否为正。
 
@@ -311,21 +311,21 @@ Browser → 打开网页 → 点击 → 检查结果
 
 但是 RL 不需要：
 
-$$
+```math
 \frac{\partial R}{\partial\theta}
-$$
+```
 
 它只把 reward 当作权重：
 
-$$
+```math
 L=-R\log\pi_\theta(y)
-$$
+```
 
 真正求导的是：
 
-$$
+```math
 \frac{\partial\log\pi_\theta(y)}{\partial\theta}
-$$
+```
 
 数据流：
 
@@ -350,41 +350,41 @@ optimizer.step()
 
 RL 想最大化：
 
-$$
+```math
 J(\theta)=\mathbb E_{y\sim\pi_\theta}[R(y)]
-$$
+```
 
 直接对 reward 求导通常不可行。
 
 利用 log-derivative trick：
 
-$$
+```math
 \nabla_\theta \pi_\theta(y)
 =\pi_\theta(y)\nabla_\theta\log\pi_\theta(y)
-$$
+```
 
 可以得到：
 
-$$
+```math
 \nabla_\theta J
 =
 \mathbb E_{y\sim\pi_\theta}
 \left[
 R(y)\nabla_\theta\log\pi_\theta(y)
 \right]
-$$
+```
 
 而一条自回归序列：
 
-$$
+```math
 \log\pi_\theta(y)
 =
 \sum_t\log\pi_\theta(y_t\mid y_{<t})
-$$
+```
 
 因此：
 
-$$
+```math
 \nabla_\theta J
 =
 \mathbb E
@@ -393,15 +393,15 @@ R
 \sum_t
 \nabla_\theta\log\pi_\theta(y_t\mid y_{<t})
 \right]
-$$
+```
 
 实现时取负号变成 minimization objective：
 
-$$
+```math
 L=-R\sum_t\log\pi_\theta(y_t)
-$$
+```
 
-实际训练一般把 $R$ 替换为方差更小、更稳定的 Advantage $A$。
+实际训练一般把 $`R`$ 替换为方差更小、更稳定的 Advantage $`A`$。
 
 ---
 
@@ -411,9 +411,9 @@ $$
 
 最简单的 baseline：
 
-$$
+```math
 A=R-b
-$$
+```
 
 例如：
 
@@ -452,15 +452,15 @@ trajectory 4 → reward = 0
 
 组内平均：
 
-$$
+```math
 \bar R=0.5
-$$
+```
 
 简单写成：
 
-$$
+```math
 A_i=R_i-\bar R
-$$
+```
 
 得到：
 
@@ -473,11 +473,11 @@ trajectory 4: -0.5
 
 标准化后常写成：
 
-$$
+```math
 A_i=
 \frac{R_i-\operatorname{mean}(R)}
 {\operatorname{std}(R)+\epsilon}
-$$
+```
 
 然后：
 
@@ -508,15 +508,15 @@ turn 50  test → pass
 
 最后：
 
-$$
+```math
 R=1
-$$
+```
 
 最朴素做法会让整个 trajectory 共用一个 advantage：
 
-$$
+```math
 A_1=A_2=\cdots=A_T
-$$
+```
 
 但这意味着：
 
@@ -532,35 +532,35 @@ $$
 
 # 13. 为什么 PPO / GRPO 还要计算 Ratio
 
-trajectory 往往由旧 policy $\pi_{old}$ 生成，而 trainer 更新时使用的是新 policy $\pi_\theta$。
+trajectory 往往由旧 policy $`\pi_{old}`$ 生成，而 trainer 更新时使用的是新 policy $`\pi_\theta`$。
 
 因此计算：
 
-$$
+```math
 r_t(\theta)
 =
 \frac{\pi_\theta(y_t\mid s_t)}
 {\pi_{old}(y_t\mid s_t)}
-$$
+```
 
 实践中：
 
-$$
+```math
 r_t=
 \exp(
 \log\pi_\theta-
 \log\pi_{old}
 )
-$$
+```
 
 PPO-style loss：
 
-$$
+```math
 L=-\min\left(
  r_tA_t,
  \operatorname{clip}(r_t,1-\epsilon,1+\epsilon)A_t
 \right)
-$$
+```
 
 ### 直觉
 
@@ -586,7 +586,7 @@ PPO clip 的作用就是：
 | 项目 | SFT / Pretraining | RL / Policy Gradient |
 |---|---|---|
 | token 来源 | Dataset ground truth | Policy 自己 sample |
-| 基础量 | $-\log p(y^*)$ | $\log p(y_{sample})$ |
+| 基础量 | $`-\log p(y^{\ast})`$ | $`\log p(y_{sample})`$ |
 | 权重 | 通常 1 / mask | Reward / Advantage |
 | 好行为 | 提高 GT token 概率 | Advantage > 0 时提高 |
 | 坏行为 | 不在 GT 中 | Advantage < 0 时降低 |
@@ -674,9 +674,9 @@ backward
 
 两者最终都通过：
 
-$$
+```math
 \log \pi_\theta(y_t\mid s_t)
-$$
+```
 
 把梯度传回 Transformer。
 
