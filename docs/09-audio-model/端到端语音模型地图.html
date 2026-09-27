@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="25 个开源、闭源产品与商业 API 端到端语音模型的交互式地图，按输入输出、全双工层级、开放形态、语音克隆和可训练性筛选，并提供官方证据与本地深读入口。">
+<meta name="theme-color" content="#eaf1f1">
+<title>端到端语音模型地图 · 25 个代表项目</title>
+<style>
+  :root{
+    --bg:#EAF1F1;--panel:#F9FCFC;--panel-2:#EFF5F5;--line:#C8D7D7;--line-bright:#91A9A9;
+    --ink:#102D31;--ink-dim:#49656A;--ink-faint:#71878B;
+    --signal:#087F79;--signal-deep:#075F5B;--warm:#D45D34;
+    --yes:#13845A;--part:#AD6A08;--no:#C24735;--unknown:#738589;
+    --display:"Iowan Old Style","Songti SC","STSong",ui-serif,serif;
+    --body:"Avenir Next","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    --mono:"SFMono-Regular","Cascadia Code","Liberation Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 28px;}
+
+  header{border-bottom:1px solid var(--line);background:radial-gradient(120% 80% at 80% -10%, rgba(52,216,198,0.07), transparent 60%),var(--bg);position:relative;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:22px 0;font-family:var(--mono);font-size:12px;letter-spacing:0.04em;color:var(--ink-faint);}
+  .topbar .dot{color:var(--signal);}
+  .topbar b{color:var(--ink-dim);font-weight:500;}
+  .hero{padding:54px 0 48px;}
+  .eyebrow{font-family:var(--mono);font-size:12.5px;letter-spacing:0.22em;text-transform:uppercase;color:var(--signal);margin-bottom:26px;display:flex;align-items:center;gap:12px;}
+  .eyebrow::before{content:"";width:34px;height:1px;background:var(--signal);opacity:0.7;}
+  h1{font-family:var(--display);font-weight:600;font-size:clamp(2.3rem,5.4vw,4rem);line-height:1.05;letter-spacing:-0.02em;max-width:20ch;}
+  h1 .em{color:var(--signal);font-style:normal;}
+  .lede{margin-top:24px;max-width:68ch;font-size:clamp(1rem,1.4vw,1.1rem);color:var(--ink-dim);}
+  .lede em{color:var(--warm);font-style:normal;}
+  .lede b{color:var(--ink);}
+
+  .waveform{display:flex;align-items:flex-end;gap:3px;height:52px;margin-top:30px;opacity:0.95;}
+  .waveform .bar{flex:1;background:linear-gradient(to top,var(--signal-deep),var(--signal));border-radius:2px 2px 0 0;min-width:2px;transform-origin:bottom;animation:pulse 2.8s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{transform:scaleY(1);}50%{transform:scaleY(0.55);}}
+  .legend{display:flex;flex-wrap:wrap;gap:16px 22px;margin-top:30px;padding-top:22px;border-top:1px solid var(--line);}
+  .leg{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;color:var(--ink-dim);}
+  .leg .glyph{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+  .g-yes{background:var(--yes);box-shadow:0 0 8px color-mix(in srgb,var(--yes) 60%,transparent);}
+  .g-part{background:var(--part);box-shadow:0 0 8px color-mix(in srgb,var(--part) 50%,transparent);}
+  .g-no{background:var(--no);box-shadow:0 0 8px color-mix(in srgb,var(--no) 50%,transparent);}
+  .g-unknown{background:transparent;border:1.5px solid var(--unknown);}
+  .leg.sep-l{border-left:1px solid var(--line);padding-left:22px;}
+
+  main{padding:14px 0 0;}
+  .section{padding:48px 0 14px;}
+  .sec-head{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;padding-bottom:8px;margin-bottom:26px;border-bottom:1px solid var(--line);}
+  .sec-index{font-family:var(--mono);font-size:13px;color:var(--ink-faint);font-weight:500;}
+  .sec-title{font-family:var(--display);font-size:clamp(1.5rem,3vw,2.05rem);font-weight:600;letter-spacing:-0.01em;}
+  .sec-sub{font-family:var(--mono);font-size:12.5px;color:var(--ink-dim);margin-left:auto;}
+  .sec-sub a{color:var(--signal);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--signal) 35%,transparent);}
+  .sec-sub a:hover{color:var(--warm);border-color:currentColor;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(348px,1fr));gap:15px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:21px 22px;position:relative;transition:border-color .18s ease, transform .18s ease, background .18s ease;}
+  .card::before{content:"";position:absolute;left:0;top:21px;bottom:21px;width:2px;background:var(--signal);border-radius:0 2px 2px 0;opacity:0;transition:opacity .18s ease;}
+  .card.legacy::before{background:var(--ink-faint);}
+  .card.fdx::before{background:var(--warm);}
+  .card:hover{border-color:var(--line-bright);background:var(--panel-2);transform:translateY(-2px);}
+  .card:hover::before{opacity:1;}
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:11px;}
+  .model{font-family:var(--display);font-size:1.22rem;font-weight:600;letter-spacing:-0.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .badge-legacy,.badge-new{font-family:var(--mono);font-size:9px;letter-spacing:0.06em;border-radius:4px;padding:2px 6px;text-transform:uppercase;font-weight:400;}
+  .badge-legacy{color:var(--ink-faint);border:1px solid var(--line-bright);}
+  .badge-new{color:var(--signal);border:1px solid color-mix(in srgb,var(--signal) 40%,transparent);background:color-mix(in srgb,var(--signal) 8%,transparent);}
+  .model-meta{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;letter-spacing:0.02em;}
+  .model-meta .os{color:var(--yes);}
+  .model-meta .os::before{content:"● ";font-size:8px;vertical-align:1px;}
+  .model-meta .sep{opacity:0.4;}
+  .vendor{font-family:var(--mono);font-size:11px;color:var(--ink-faint);white-space:nowrap;padding-top:5px;text-align:right;}
+  .access-row{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:3px 7px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);font:600 9.5px var(--mono);letter-spacing:.02em;}
+  .access-row::before{content:"";width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
+  .access-row .access-key{color:var(--ink-faint);font-weight:500;}
+  .access-row.access-open{color:var(--yes);border-color:color-mix(in srgb,var(--yes) 34%,var(--line));}
+  .access-row.access-open::before{background:var(--yes);}
+  .access-row.access-commercial{color:var(--part);border-color:color-mix(in srgb,var(--part) 38%,var(--line));}
+  .access-row.access-commercial::before{background:var(--part);}
+  .access-row.access-product{color:var(--warm);border-color:color-mix(in srgb,var(--warm) 38%,var(--line));}
+  .access-row.access-product::before{background:var(--warm);}
+  .desc{font-size:0.85rem;color:var(--ink-dim);margin:0 0 13px;}
+
+  .io{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+  .io-row{display:grid;grid-template-columns:36px 1fr;align-items:center;gap:9px;}
+  .io-lbl{font-family:var(--mono);font-size:10px;color:var(--ink-faint);letter-spacing:0.03em;}
+  .mods{display:flex;flex-wrap:wrap;gap:5px;}
+  .mod{font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);border:1px solid var(--line);background:var(--panel-2);padding:2px 7px;border-radius:5px;}
+  .mod.out{color:var(--signal);border-color:color-mix(in srgb,var(--signal) 35%,transparent);background:color-mix(in srgb,var(--signal) 8%,transparent);}
+
+  .paradigm-cell{display:grid;grid-template-columns:74px 15px 1fr;align-items:center;gap:9px;margin-bottom:10px;padding:9px 13px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);}
+  .paradigm-key{font:500 10px var(--mono);letter-spacing:.02em;color:var(--ink-faint);}
+  .paradigm-mark{width:10px;height:10px;border-radius:50%;}
+  .paradigm-val{font-size:.8rem;line-height:1.35;color:var(--ink-dim);}
+  .paradigm-val b{display:block;font-weight:600;}
+  .paradigm-continuous .paradigm-mark{background:var(--yes);box-shadow:0 0 6px color-mix(in srgb,var(--yes) 55%,transparent);}
+  .paradigm-continuous .paradigm-val b{color:var(--yes);}
+  .paradigm-turn .paradigm-mark{background:var(--part);box-shadow:0 0 6px color-mix(in srgb,var(--part) 45%,transparent);}
+  .paradigm-turn .paradigm-val b{color:var(--part);}
+  .paradigm-cascade .paradigm-mark{background:var(--no);box-shadow:0 0 6px color-mix(in srgb,var(--no) 45%,transparent);}
+  .paradigm-cascade .paradigm-val b{color:var(--no);}
+
+  .caps{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:9px;overflow:hidden;}
+  .cap{display:grid;grid-template-columns:74px 15px 1fr;align-items:center;gap:9px;padding:9px 13px;background:var(--panel-2);}
+  .cap + .cap{border-top:1px solid var(--line);}
+  .cap-key{font-family:var(--mono);font-size:10px;letter-spacing:0.02em;color:var(--ink-faint);}
+  .cap-dot{width:10px;height:10px;border-radius:50%;}
+  .cap-yes .cap-dot{background:var(--yes);box-shadow:0 0 6px color-mix(in srgb,var(--yes) 55%,transparent);}
+  .cap-part .cap-dot{background:var(--part);box-shadow:0 0 6px color-mix(in srgb,var(--part) 45%,transparent);}
+  .cap-no .cap-dot{background:var(--no);box-shadow:0 0 6px color-mix(in srgb,var(--no) 45%,transparent);}
+  .cap-unknown .cap-dot{background:transparent;border:1.5px solid var(--unknown);}
+  .cap-val{font-size:0.8rem;color:var(--ink);line-height:1.35;}
+  .cap-yes .cap-val b{color:var(--yes);}
+  .cap-part .cap-val b{color:var(--part);}
+  .cap-no .cap-val b{color:var(--no);}
+  .cap-unknown .cap-val b{color:var(--ink-dim);}
+  .cap-val b{font-weight:600;}
+
+  .picks{margin-top:30px;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .picks-head{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .picks-head h3{font-family:var(--display);font-weight:600;font-size:1.25rem;letter-spacing:-0.01em;}
+  .chip{font-family:var(--mono);font-size:11px;color:var(--ink);border:1px solid var(--line-bright);background:var(--panel-2);padding:2px 9px;border-radius:100px;}
+  .pick-row{display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 26px;border-bottom:1px solid var(--line);align-items:baseline;}
+  .pick-row:last-child{border-bottom:0;}
+  .pick-need{font-family:var(--display);font-weight:500;font-size:1.02rem;color:var(--ink);}
+  .pick-need span{display:block;font-family:var(--mono);font-size:11px;color:var(--ink-faint);font-weight:400;margin-top:3px;letter-spacing:0.02em;}
+  .pick-ans{font-size:0.94rem;color:var(--ink-dim);}
+  .pick-ans strong{color:var(--signal);font-weight:600;}
+
+  footer{margin-top:56px;border-top:1px solid var(--line);padding:36px 0 56px;}
+  .foot-note{font-size:0.9rem;color:var(--ink-faint);max-width:82ch;margin-bottom:16px;}
+  .foot-note strong{color:var(--ink-dim);font-weight:600;}
+  .foot-note em{color:var(--signal);font-style:normal;}
+  .foot-meta{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);letter-spacing:0.03em;display:flex;gap:18px;flex-wrap:wrap;margin-top:6px;}
+  .foot-meta .dot{color:var(--signal);}
+
+  /* Acoustic atlas: a cool-paper interface with two overlapping speech lanes. */
+  body{background-image:linear-gradient(rgba(16,45,49,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(16,45,49,.035) 1px,transparent 1px);background-size:28px 28px;}
+  header{background:radial-gradient(80% 120% at 88% 5%,rgba(8,127,121,.13),transparent 62%),linear-gradient(180deg,#F4F9F9 0%,var(--bg) 100%);}
+  h1{font-weight:650;letter-spacing:-.035em;max-width:12em;}
+  .topbar a{color:var(--ink-dim);text-decoration:none;border-bottom:1px solid transparent;}
+  .topbar a:hover{color:var(--signal);border-color:currentColor;}
+  .top-actions{display:flex;gap:16px;align-items:center;}
+  .duplex-scope{margin-top:34px;border:1px solid var(--line-bright);border-radius:4px;background:rgba(249,252,252,.82);box-shadow:0 18px 50px rgba(16,45,49,.08);overflow:hidden;position:relative;}
+  .duplex-scope::after{content:"OVERLAP";position:absolute;right:12px;top:50%;transform:translateY(-50%) rotate(90deg);font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--warm);}
+  .duplex-lane{display:grid;grid-template-columns:112px 1fr;align-items:center;min-height:58px;padding:8px 38px 8px 14px;}
+  .duplex-lane + .duplex-lane{border-top:1px solid var(--line);}
+  .lane-label{font-family:var(--mono);font-size:10px;line-height:1.35;letter-spacing:.08em;color:var(--ink-faint);}
+  .lane-label b{display:block;color:var(--ink);font-size:11px;}
+  .waveform{display:flex;align-items:center;gap:3px;height:42px;margin:0;opacity:.95;}
+  .waveform .bar{border-radius:2px;background:var(--signal);transform-origin:center;}
+  .duplex-lane.user .waveform .bar{background:var(--warm);}
+  .duplex-lane.user .waveform{transform:scaleX(-1);}
+  .hero-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:26px;border:1px solid var(--line);background:rgba(249,252,252,.7);}
+  .hero-stat{padding:15px 16px;border-right:1px solid var(--line);}
+  .hero-stat:last-child{border-right:0;}
+  .hero-stat b{display:block;font-family:var(--display);font-size:1.45rem;line-height:1;color:var(--ink);}
+  .hero-stat span{font-family:var(--mono);font-size:10px;color:var(--ink-faint);letter-spacing:.04em;}
+  .atlas-tools{position:sticky;top:0;z-index:20;display:grid;grid-template-columns:minmax(210px,1fr) auto auto auto;gap:12px;align-items:center;padding:12px;margin:0 0 24px;background:rgba(234,241,241,.93);border:1px solid var(--line);border-radius:6px;backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(16,45,49,.06);}
+  .searchbox{position:relative;}
+  .searchbox::before{content:"⌕";position:absolute;left:13px;top:50%;transform:translateY(-52%);font-family:var(--display);font-size:1.25rem;color:var(--signal);}
+  .searchbox input{width:100%;height:40px;padding:0 14px 0 38px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);font:500 .86rem var(--body);outline:none;}
+  .searchbox input:focus{border-color:var(--signal);box-shadow:0 0 0 3px rgba(8,127,121,.12);}
+  .filters{display:flex;flex-wrap:wrap;gap:6px;}
+  .filter-btn{height:40px;padding:0 12px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink-dim);font:600 11px var(--mono);cursor:pointer;}
+  .filter-btn:hover,.filter-btn.active{color:#fff;background:var(--signal);border-color:var(--signal);}
+  .result-count{font:600 11px var(--mono);color:var(--ink-faint);white-space:nowrap;padding-right:4px;}
+  .view-switch{display:flex;border:1px solid var(--line);border-radius:4px;background:var(--panel);padding:3px;gap:2px;}
+  .view-btn{height:32px;padding:0 10px;border:0;border-radius:3px;background:transparent;color:var(--ink-faint);font:600 10.5px var(--mono);cursor:pointer;white-space:nowrap;}
+  .view-btn:hover{color:var(--signal);}
+  .view-btn.active{color:#fff;background:var(--ink);}
+  .card{border-radius:5px;box-shadow:0 9px 24px rgba(16,45,49,.035);}
+  .card[hidden]{display:none !important;}
+  .card::after{content:attr(data-duplex-label);position:absolute;right:18px;bottom:17px;font:600 9px var(--mono);letter-spacing:.05em;color:var(--ink-faint);}
+  .caps{margin-bottom:35px;border-radius:4px;}
+  .card-actions{display:flex;align-items:center;gap:12px;margin-top:-25px;position:relative;z-index:1;font:600 10px var(--mono);}
+  .card-actions a{color:var(--signal);text-decoration:none;border-bottom:1px solid rgba(8,127,121,.3);}
+  .card-actions a:hover{color:var(--warm);border-color:currentColor;}
+  .list-head{display:none;grid-template-columns:minmax(160px,1.12fr) minmax(230px,1.62fr) minmax(108px,.78fr) repeat(3,minmax(120px,.9fr)) minmax(82px,.68fr);gap:12px;padding:10px 15px;border:1px solid var(--line);border-bottom:0;background:var(--ink);color:#DDEAEA;font:600 9.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;}
+  .list-head.show{display:grid;}
+  .grid.list-view{display:block;border:1px solid var(--line);background:rgba(249,252,252,.45);}
+  .grid.list-view .card{display:grid;grid-template-columns:minmax(160px,1.12fr) minmax(230px,1.62fr) minmax(108px,.78fr) repeat(3,minmax(120px,.9fr)) minmax(82px,.68fr);grid-template-rows:auto auto;gap:9px 12px;padding:15px;margin:0;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;background:rgba(249,252,252,.72);}
+  .grid.list-view .card:last-child{border-bottom:0;}
+  .grid.list-view .card:hover{transform:none;background:var(--panel);}
+  .grid.list-view .card::before{top:0;bottom:0;opacity:1;}
+  .grid.list-view .card::after{display:none;}
+  .grid.list-view .card-top{grid-column:1;grid-row:1 / 3;display:block;margin:0;}
+  .grid.list-view .model{font-size:1.05rem;line-height:1.25;}
+  .grid.list-view .vendor{text-align:left;padding-top:8px;}
+  .grid.list-view .access-row{display:flex;width:max-content;max-width:100%;white-space:normal;line-height:1.35;}
+  .grid.list-view .desc{grid-column:2;grid-row:1;margin:0;font-size:.77rem;line-height:1.45;}
+  .grid.list-view .io{grid-column:2;grid-row:2;margin:0;gap:4px;align-self:end;}
+  .grid.list-view .io-row{grid-template-columns:28px 1fr;gap:5px;}
+  .grid.list-view .mod{font-size:9px;padding:1px 5px;}
+  .grid.list-view .paradigm-cell{grid-column:3;grid-row:1 / 3;display:grid;grid-template-columns:12px 1fr;align-content:start;align-items:center;gap:6px;margin:0;padding:1px 0;border:0;background:transparent;}
+  .grid.list-view .paradigm-key{grid-column:1 / 3;margin-bottom:6px;}
+  .grid.list-view .paradigm-mark{grid-column:1;}
+  .grid.list-view .paradigm-val{grid-column:2;font-size:.73rem;line-height:1.42;}
+  .grid.list-view .caps{display:contents;}
+  .grid.list-view .cap{grid-row:1 / 3;display:grid;grid-template-columns:12px 1fr;align-content:start;align-items:center;gap:6px;padding:1px 0;background:transparent;border:0;}
+  .grid.list-view .cap + .cap{border:0;}
+  .grid.list-view .cap:nth-child(1){grid-column:4;}
+  .grid.list-view .cap:nth-child(2){grid-column:5;}
+  .grid.list-view .cap:nth-child(3){grid-column:6;}
+  .grid.list-view .cap-key{grid-column:1 / 3;margin-bottom:6px;}
+  .grid.list-view .cap-dot{grid-column:1;}
+  .grid.list-view .cap-val{grid-column:2;font-size:.73rem;line-height:1.42;}
+  .grid.list-view .cap-val b{display:block;margin-bottom:2px;}
+  .grid.list-view .card-actions{grid-column:7;grid-row:1 / 3;align-self:center;display:grid;justify-items:start;margin:0;gap:9px;}
+  .grid.list-view .card-actions a{display:inline-block;}
+  .evidence-band{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:5px;}
+  .evidence-band h3{font-family:var(--display);font-size:1.25rem;margin-bottom:8px;}
+  .evidence-band p,.evidence-band li{font-size:.88rem;color:var(--ink-dim);}
+  .evidence-band ul{list-style:none;display:grid;gap:8px;}
+  .evidence-band li::before{content:"—";color:var(--signal);margin-right:8px;}
+  .no-results{display:none;padding:50px 20px;text-align:center;border:1px dashed var(--line-bright);color:var(--ink-dim);background:rgba(249,252,252,.5);}
+  .no-results.show{display:block;}
+  :focus-visible{outline:3px solid rgba(8,127,121,.28);outline-offset:3px;}
+
+  @media (max-width:1040px){
+    .atlas-tools{grid-template-columns:minmax(210px,1fr) auto auto;}
+    .result-count{grid-column:1 / -1;text-align:right;}
+    .list-head{display:none !important;}
+    .grid.list-view{border:0;background:transparent;}
+    .grid.list-view .card{grid-template-columns:minmax(170px,.8fr) minmax(0,1.4fr);grid-template-rows:auto auto auto;padding:17px;border:1px solid var(--line);margin-bottom:9px;}
+    .grid.list-view .card-top{grid-column:1;grid-row:1 / 3;}
+    .grid.list-view .desc{grid-column:2;grid-row:1;}
+    .grid.list-view .io{grid-column:2;grid-row:2;}
+    .grid.list-view .paradigm-cell{grid-column:1 / -1;grid-row:3;display:grid;grid-template-columns:12px 1fr;padding:10px;margin:4px 0 0;border:1px solid var(--line);background:var(--panel-2);}
+    .grid.list-view .caps{grid-column:1 / -1;grid-row:4;display:grid;grid-template-columns:repeat(3,1fr);margin:0;}
+    .grid.list-view .cap{display:grid;grid-row:auto !important;grid-column:auto !important;padding:10px;background:var(--panel-2);}
+    .grid.list-view .cap + .cap{border-left:1px solid var(--line);}
+    .grid.list-view .card-actions{grid-column:1 / -1;grid-row:5;display:flex;align-self:auto;margin-top:3px;}
+  }
+
+  @media (max-width:620px){
+    .wrap{padding:0 20px;}
+    .pick-row{grid-template-columns:1fr;gap:6px;}
+    .sec-sub{margin-left:0;width:100%;}
+    .waveform{height:42px;}
+    .legend{gap:12px 16px;}
+    .leg.sep-l{border-left:0;padding-left:0;}
+    .top-actions a{display:none;}
+    .duplex-lane{grid-template-columns:78px 1fr;padding-right:28px;}
+    .hero-stats{grid-template-columns:repeat(2,1fr);}
+    .hero-stat:nth-child(2){border-right:0;}.hero-stat:nth-child(-n+2){border-bottom:1px solid var(--line);}
+    .atlas-tools{position:relative;grid-template-columns:1fr;top:auto;}
+    .filters{display:grid;grid-template-columns:repeat(2,1fr);}
+    .filter-btn{padding:0 7px;}
+    .view-switch{display:grid;grid-template-columns:repeat(2,1fr);}
+    .result-count{grid-column:auto;text-align:left;}
+    .grid.list-view .card{display:grid;grid-template-columns:1fr;grid-template-rows:auto;padding:15px;}
+    .grid.list-view .card-top,.grid.list-view .desc,.grid.list-view .io,.grid.list-view .paradigm-cell,.grid.list-view .caps,.grid.list-view .card-actions{grid-column:1;grid-row:auto;}
+    .grid.list-view .caps{grid-template-columns:1fr;}
+    .grid.list-view .cap + .cap{border-left:0;border-top:1px solid var(--line);}
+    .evidence-band{grid-template-columns:1fr;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .waveform .bar{animation:none !important;}
+    html{scroll-behavior:auto;}
+    .card{transition:border-color .18s ease;}
+    .card:hover{transform:none;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="topbar">
+      <span><span class="dot">●</span> SPEECH&nbsp;/&nbsp;MODEL&nbsp;ATLAS&nbsp;/&nbsp;25</span>
+      <span class="top-actions"><a href="../../README.md">资料总导航</a><a href="../../接口设计/README.md">接口设计</a><span>核对至 <b>2026.07.21</b></span></span>
+    </div>
+    <div class="hero">
+      <div class="eyebrow">端到端 · 听说并行 / 模态 / 音色</div>
+      <h1>端到端语音模型地图</h1>
+      <p class="lede">25 个代表项目放在同一条证据尺度上：<b>输入 → 输出</b>、<b>全双工发生在哪一层</b>、<b>开放状态</b>、<b>能否克隆音色</b>、<b>是否有公开训练路径</b>。这里把 <em>模型级原生全双工</em>、产品层 barge-in 与普通流式生成明确分开，并将开源项目、闭源产品和 OpenAI、字节、阿里的商业 API 放在同一张地图中对照。</p>
+      <div class="duplex-scope" aria-label="全双工示意：用户与模型语音时间轴可以重叠">
+        <div class="duplex-lane user"><span class="lane-label"><b>USER</b>持续输入</span><div class="waveform" id="waveIn" aria-hidden="true"></div></div>
+        <div class="duplex-lane model"><span class="lane-label"><b>MODEL</b>流式输出</span><div class="waveform" id="waveOut" aria-hidden="true"></div></div>
+      </div>
+      <div class="hero-stats" aria-label="模型地图统计">
+        <div class="hero-stat"><b id="statTotal">25</b><span>代表模型</span></div>
+        <div class="hero-stat"><b id="statNative">5</b><span>模型级原生</span></div>
+        <div class="hero-stat"><b id="statSystem">6</b><span>系统 / 产品级</span></div>
+        <div class="hero-stat"><b id="statCommercial">3</b><span>商业 API</span></div>
+      </div>
+      <div class="legend">
+        <div class="leg"><span class="glyph g-yes"></span>官方明确 / 可复现</div>
+        <div class="leg"><span class="glyph g-part"></span>产品层 / 部分能力</div>
+        <div class="leg"><span class="glyph g-no"></span>未支持 / 半双工</div>
+        <div class="leg"><span class="glyph g-unknown"></span>公开信息不足</div>
+        <div class="leg"><span class="badge-new">开源权重</span>可下载 / 可复现</div>
+        <div class="leg"><span class="badge-new">商业 API</span>权重未公开</div>
+        <div class="leg"><span class="badge-new">闭源产品</span>产品可用 / API 待开放</div>
+        <div class="leg sep-l"><span class="mod out" style="padding:1px 6px">语音</span>= 输出模态</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="section">
+    <div class="sec-head">
+      <span class="sec-index">25 个模型</span>
+      <span class="sec-title">端到端语音模型全表</span>
+      <span class="sec-sub">自动按首次公开时间倒序 · <a href="https://openai.com/zh-Hans-CN/index/introducing-gpt-live/" target="_blank" rel="noreferrer">交互范式采用 OpenAI 三分类 ↗</a></span>
+    </div>
+    <div class="atlas-tools" aria-label="模型筛选工具">
+      <label class="searchbox"><span class="sr-only" style="position:absolute;clip:rect(0,0,0,0)">搜索模型或机构</span><input id="modelSearch" type="search" placeholder="搜索模型、机构或能力…" autocomplete="off"></label>
+      <div class="filters" role="group" aria-label="按全双工层级筛选">
+        <button class="filter-btn active" type="button" data-filter="all">全部</button>
+        <button class="filter-btn" type="button" data-filter="native">模型级原生</button>
+        <button class="filter-btn" type="button" data-filter="system">系统 / 产品级</button>
+        <button class="filter-btn" type="button" data-filter="half">流式 / 半双工</button>
+        <button class="filter-btn" type="button" data-filter="open">开源权重</button>
+        <button class="filter-btn" type="button" data-filter="commercial">商业 API</button>
+        <button class="filter-btn" type="button" data-filter="product">闭源产品</button>
+      </div>
+      <div class="view-switch" role="group" aria-label="切换模型展示方式">
+        <button class="view-btn" type="button" data-view="card" aria-pressed="false">卡片</button>
+        <button class="view-btn active" type="button" data-view="list" aria-pressed="true">列表</button>
+      </div>
+      <span class="result-count" id="resultCount" aria-live="polite">显示 25 / 25</span>
+    </div>
+    <div class="list-head show" id="listHead" aria-hidden="true">
+      <span>模型 / 开放状态</span><span>架构与模态</span><span title="级联式 / 轮次式 / 连续交互">交互范式</span><span>全双工</span><span>语音克隆</span><span>训练 / 改音色</span><span>资料</span>
+    </div>
+    <div class="grid list-view" id="modelGrid" data-view="list">
+
+      <!-- 2026.07 GPT-Live-1 -->
+      <article class="card fdx">
+        <div class="card-top"><div><div class="model">GPT-Live-1 <span class="badge-new">闭源产品</span></div><div class="model-meta">2026.07<span class="sep">·</span><span>GPT-Live-1 / GPT-Live-1 mini</span></div></div><div class="vendor">OpenAI · ChatGPT</div></div>
+        <p class="desc">OpenAI 新一代语音模型，基于全双工架构连续处理输入并同步生成输出；模型每秒可多次决定说话、倾听、暂停、打断或调用工具，复杂任务可委派给 GPT-5.5 在后台完成。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-yes"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>模型级原生</b>　边听边说，支持连续交互与主动倾听</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　使用九种预设声音，并防止模仿真实人物</span></div>
+          <div class="cap cap-no"><span class="cap-key">训练 / 改音色</span><span class="cap-dot"></span><span class="cap-val"><b>未开放</b>　产品已上线，API 与权重目前尚未开放</span></div>
+        </div>
+      </article>
+
+      <!-- 2026.07 GPT-Realtime-2.1 -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">GPT-Realtime-2.1 <span class="badge-new">商业 API</span></div><div class="model-meta">2026.07<span class="sep">·</span><span>gpt-realtime-2.1</span></div></div><div class="vendor">OpenAI</div></div>
+        <p class="desc">GPT-Realtime-2 的更新版，面向实时语音 Agent；强化字母数字识别、静音与噪声处理和打断行为，并提供可调推理强度、指令遵循与工具调用。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">图像</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>产品层支持</b>　Realtime 会话支持持续双向音频与打断</span></div>
+          <div class="cap cap-unknown"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>未提供</b>　公开 API 仅提供预设音色，未列克隆接口</span></div>
+          <div class="cap cap-no"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　官方模型页未开放微调</span></div>
+        </div>
+      </article>
+
+      <!-- 2026.07 Qwen-Audio 3.0 Realtime -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Qwen-Audio 3.0 Realtime <span class="badge-new">商业 API</span></div><div class="model-meta">2026.07<span class="sep">·</span><span>Plus / Flash</span></div></div><div class="vendor">阿里·百炼</div></div>
+        <p class="desc">端到端实时语音产品线，以 WebSocket 双工连接提供流式输入输出；包含声学 VAD、smart_turn、手动三种轮次模式，以及 Function Calling 和上下文管理。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>产品层支持</b>　持续收音、流式下行和语义轮次控制</span></div>
+          <div class="cap cap-yes"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>API 支持</b>　Plus / Flash 均可使用复刻音色</span></div>
+          <div class="cap cap-no"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>未开放</b>　无公开权重与模型训练代码</span></div>
+        </div>
+      </article>
+
+      <!-- 2026.06 Doubao Realtime Voice 3.0 / SeedDuplex -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Doubao Realtime Voice 3.0 <span class="badge-new">商业 API</span></div><div class="model-meta">2026.06<span class="sep">·</span><span>SeedDuplex / model 1.2.6.0</span></div></div><div class="vendor">字节·火山引擎</div></div>
+        <p class="desc">官方称“全双工端到端语音大模型（SeedDuplex）”；通过独立 WebSocket 接口提供持续音频上行、文本与语音下行、响应取消、Function Calling 和上下文管理。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>官方全双工版</b>　API 明确支持持续输入与 response.cancel 打断</span></div>
+          <div class="cap cap-yes"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>API 支持</b>　voice 字段明确支持复刻音色</span></div>
+          <div class="cap cap-no"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>未开放</b>　无公开权重与模型训练代码</span></div>
+        </div>
+      </article>
+
+      <!-- 2026.02 MiniCPM-o 4.5 -->
+      <article class="card fdx">
+        <div class="card-top"><div><div class="model">MiniCPM-o 4.5</div><div class="model-meta">2026.02<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">OpenBMB·面壁</div></div>
+        <p class="desc">端到端 omni,9B,全双工 + 时间线建模(TDM),端侧可跑。音色能力最完整。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">图像</span><span class="mod">音频</span><span class="mod">视频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-yes"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>支持</b>　full-duplex streaming + TDM</span></div>
+          <div class="cap cap-yes"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>支持</b>　端到端 voice clone,情感/语速/风格可控</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>支持</b>　权重开源</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.12 Fun-Audio-Chat -->
+      <article class="card fdx">
+        <div class="card-top"><div><div class="model">Fun-Audio-Chat</div><div class="model-meta">2025.12<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">阿里·通义</div></div>
+        <p class="desc">DRSR 以 5 Hz 共享骨干 + 25 Hz 精炼头解决双速率问题；论文另给出 Fun-Audio-Chat-Duplex，全双工变体与公开 8B 权重需分开看。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">语音</span><span class="mod out">文本</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-yes"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>Duplex 变体</b>　论文明确，公开权重边界需核对</span></div>
+          <div class="cap cap-unknown"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>信息有限</b>　克隆未明确</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可微调</b>　权重开源</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.09 Qwen3-Omni -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Qwen3-Omni</div><div class="model-meta">2025.09<span class="sep">·</span><span class="os">Apache 2.0</span></div></div><div class="vendor">阿里</div></div>
+        <p class="desc">原生端到端旗舰,Thinker-Talker MoE,30B-A3B,可处理 40 分钟音频。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">图像</span><span class="mod">音频</span><span class="mod">视频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>流式</b>　实时低延迟,非 Moshi 式可打断</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　固定音色</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>探索中</b>　社区试微调 Mimi codebook</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.09 RoboBrain-Audio -->
+      <article class="card fdx">
+        <div class="card-top"><div><div class="model">RoboBrain-Audio</div><div class="model-meta">2025.09<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">智源·BAAI</div></div>
+        <p class="desc">原生全双工、可打断,面向具身智能。句级标注显著降低训练成本。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-yes"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>原生全双工</b>　可中断、并发听说,80ms 级</span></div>
+          <div class="cap cap-unknown"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>信息有限</b>　侧重全双工交互</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>训练友好</b>　句级标注降成本</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.07 Step-Audio 2 -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Step-Audio 2</div><div class="model-meta">2025.07<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">阶跃星辰</div></div>
+        <p class="desc">工业级端到端音频 LLM,推理导向 RL,支持函数调用与 RAG。重副语言理解。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>流式</b>　可打断全双工未明确</span></div>
+          <div class="cap cap-part"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>有限</b>　音色选择有限,克隆非重点</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　音色路径未明确</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.07 OpenS2S -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">OpenS2S</div><div class="model-meta">2025.07<span class="sep">·</span><span class="os">完全开源</span></div></div><div class="vendor">紫东太初+长城</div></div>
+        <p class="desc">完全透明开源的共情语音模型,三阶段训练公开,声码借 GLM-4-Voice Token2Wav。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">语音</span><span class="mod out">文本</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　流式 turn-based</span></div>
+          <div class="cap cap-part"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>训练期用</b>　增广说话人,用户侧未明确</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>完全透明</b>　数据+训练全公开,最可复现</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.06 Ming-omni -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Ming-omni</div><div class="model-meta">2025.06<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">蚂蚁·Inclusion</div></div>
+        <p class="desc">统一多模态感知与生成,单一架构可理解并生成多种模态(含图像生成)。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">图像</span><span class="mod">音频</span><span class="mod">视频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span><span class="mod out">图像</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　turn-based 生成</span></div>
+          <div class="cap cap-unknown"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>信息有限</b>　音色控制未明确</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　权重开源</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.04 Kimi-Audio -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Kimi-Audio</div><div class="model-meta">2025.04<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">月之暗面</div></div>
+        <p class="desc">通用音频理解/生成/对话基础模型,语义+声学双特征,flow-matching 流式解码。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　TDM 交织,turn-based</span></div>
+          <div class="cap cap-unknown"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>信息有限</b>　声学 token 含音色,接口未明确</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可微调</b>　音色路径未明确</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.03 Qwen2.5-Omni -->
+      <article class="card legacy">
+        <div class="card-top"><div><div class="model">Qwen2.5-Omni <span class="badge-legacy">前代</span></div><div class="model-meta">2025.03<span class="sep">·</span><span class="os">Apache 2.0</span></div></div><div class="vendor">阿里</div></div>
+        <p class="desc">首代 Thinker-Talker。音色机制(cond 提取器 + speaker bos)未开放,两条路都堵。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">图像</span><span class="mod">音频</span><span class="mod">视频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>流式</b>　块级流式 I/O,非可打断</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　仅 Chelsie/Ethan</span></div>
+          <div class="cap cap-no"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>无路径</b>　speaker bos 绑定 + 提取器闭源</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.02 Baichuan-Audio [新增] -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Baichuan-Audio <span class="badge-new">补充</span></div><div class="model-meta">2025.02<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">百川</div></div>
+        <p class="desc">端到端中英双语实时对话。Audio Tokenizer(12.5Hz,Whisper Large)+ Audio LLM + flow-matching 解码,交错生成文/音 token,附 OpenAudio-Bench。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　交错生成,turn-based</span></div>
+          <div class="cap cap-unknown"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>信息有限</b>　克隆未明确</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　开源,数据将开源</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.01 MinMo [新增] -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">MinMo <span class="badge-new">补充</span></div><div class="model-meta">2025.01<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">阿里·通义</div></div>
+        <p class="desc">解耦"回复"与"语音token":LLM 只出文本(semantic),CosyVoice2 解码语音。额外训一个 Full Duplex Predictor 判别是否回复。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>判别器式</b>　外挂 Full Duplex Predictor,非原生</span></div>
+          <div class="cap cap-part"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>有限</b>　随 CosyVoice2 解码,继承其能力</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　解耦设计,解码端可换</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.10 InteractiveOmni -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">InteractiveOmni</div><div class="model-meta">2025.10<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">Tong et al.</div></div>
+        <p class="desc">视觉+音频+LLM+语音解码器统一架构,面向长程音视频多轮对话。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">图像</span><span class="mod">音频</span><span class="mod">视频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　多轮对话,turn-based</span></div>
+          <div class="cap cap-unknown"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>信息有限</b>　克隆未明确</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　权重开源</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.05 LLaMA-Omni2 -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">LLaMA-Omni2</div><div class="model-meta">2025.05<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">ICT / CAS</div></div>
+        <p class="desc">基于 LLM 的实时语音 chatbot,自回归流式语音合成(CosyVoice 式解码)。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　实时但 turn-based</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>未开放</b>　音色相对固定</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　解码器可微调</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.05 VITA-Audio [新增] -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">VITA-Audio <span class="badge-new">补充</span></div><div class="model-meta">2025.05<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">VITA-MLLM</div></div>
+        <p class="desc">NeurIPS 2025。MCTP 模块一次 forward 后直接把 semantic token 映射到 audio token,免去再过一遍 LLM。开源,效果好于 GLM-4-Voice,适合当 base。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　快速交错(MCTP),非全双工</span></div>
+          <div class="cap cap-unknown"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>信息有限</b>　克隆未明确</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可作 base</b>　完全开源,推荐二次开发</span></div>
+        </div>
+      </article>
+
+      <!-- 2024.12 GLM-4-Voice -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">GLM-4-Voice</div><div class="model-meta">2024.12<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">智谱</div></div>
+        <p class="desc">端到端类人语音 chatbot,音频 token 作为 LLM 词表延伸,常被当二次训练底座。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">语音</span><span class="mod out">文本</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　turn-based,侧重语义对齐</span></div>
+          <div class="cap cap-part"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>有限</b>　非主打</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练性强</b>　广泛用作底座</span></div>
+        </div>
+      </article>
+
+      <!-- 2024.11 Freeze-Omni [新增] -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Freeze-Omni <span class="badge-new">补充</span></div><div class="model-meta">2024.11<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">西工大等</div></div>
+        <p class="desc">冻结文本 LLM 的 speech-to-speech,保留 LLM 原智能不被语音微调遗忘。流式输入输出、低延迟;全双工靠模块连接实现。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>模块式</b>　有 duplex 设计,靠连接模块,非原生</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　固定音色</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>语音端可训</b>　LLM 冻结,语音模块可调</span></div>
+        </div>
+      </article>
+
+      <!-- 2024.10 Mini-Omni2 [新增] -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">Mini-Omni2 <span class="badge-new">补充</span></div><div class="model-meta">2024.10<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">启元</div></div>
+        <p class="desc">文/视/语三模态统一,GPT-4o 类。CLIP + Whisper-small + Qwen2-0.5B。基于命令的中断机制("Stop Omni")。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">图像</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-part"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>命令式中断</b>　可"Stop Omni"打断,部分双工</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　固定音色</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　小模型,权重开源</span></div>
+        </div>
+      </article>
+
+      <!-- 2024.09 Moshi -->
+      <article class="card fdx">
+        <div class="card-top"><div><div class="model">Moshi</div><div class="model-meta">2024.09<span class="sep">·</span><span class="os">Apache 2.0</span></div></div><div class="vendor">Kyutai·法国</div></div>
+        <p class="desc">多流 speech-to-speech,真·全双工标杆。同时预测自身与用户两路音频流。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">语音</span><span class="mod out">文本</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-yes"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>原生全双工</b>　多流并行,可打断,公认标杆</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　单一固定音色</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>路径清晰</b>　训练全开放,新说话人数据重训即改</span></div>
+        </div>
+      </article>
+
+      <!-- 2024.02 SPIRIT LM [新增] -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">SPIRIT LM <span class="badge-new">补充</span></div><div class="model-meta">2024.02<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">Meta</div></div>
+        <p class="desc">交错式语音文本模型,LLaMA 2 7B + HuBERT + HiFi-GAN,词级交替训练对齐。BASE/EXPRESSIVE 两版(后者含音高、语气)。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　交错生成,非全双工</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　非克隆取向</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　LLaMA 2 底座,开源</span></div>
+        </div>
+      </article>
+
+      <!-- 2023.05 SpeechGPT [新增] -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">SpeechGPT <span class="badge-new">补充</span></div><div class="model-meta">2023.05<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">复旦</div></div>
+        <p class="desc">早期跨模态对话开创工作。离散单元 + LLaMA 13B + HiFi-GAN。三阶段训练:模态适配 / 跨模态指令 / 模态链 LoRA。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　turn-based</span></div>
+          <div class="cap cap-no"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>不支持</b>　固定音色</span></div>
+          <div class="cap cap-yes"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可微调</b>　含 LoRA 微调阶段</span></div>
+        </div>
+      </article>
+
+      <!-- 2025.12 MiMo-Audio [新增] -->
+      <article class="card">
+        <div class="card-top"><div><div class="model">MiMo-Audio <span class="badge-new">补充</span></div><div class="model-meta">2025.12<span class="sep">·</span><span class="os">开源</span></div></div><div class="vendor">小米</div></div>
+        <p class="desc">7B 音频语言模型，以 patch encoder / decoder 压缩高码率 RVQ 序列；强调超大规模预训练后的 few-shot 音频任务泛化，而非原生全双工。</p>
+        <div class="io"><div class="io-row"><span class="io-lbl">输入</span><span class="mods"><span class="mod">文本</span><span class="mod">音频</span></span></div><div class="io-row"><span class="io-lbl">输出</span><span class="mods"><span class="mod out">文本</span><span class="mod out">语音</span></span></div></div>
+        <div class="caps">
+          <div class="cap cap-no"><span class="cap-key">全双工</span><span class="cap-dot"></span><span class="cap-val"><b>半双工</b>　公开任务含多轮对话，无重叠听说证据</span></div>
+          <div class="cap cap-yes"><span class="cap-key">语音克隆</span><span class="cap-dot"></span><span class="cap-val"><b>支持</b>　公开推理支持参考音频条件</span></div>
+          <div class="cap cap-part"><span class="cap-key">微调改音色</span><span class="cap-dot"></span><span class="cap-val"><b>可训练</b>　权重开源</span></div>
+        </div>
+      </article>
+
+    </div>
+    <div class="no-results" id="noResults">没有匹配的模型。试试清除搜索词或切换筛选条件。</div>
+  </section>
+
+  <!-- PICKS -->
+  <section class="section" id="picks">
+    <div class="sec-head">
+      <span class="sec-index">速查</span>
+      <span class="sec-title">按需求选</span>
+      <span class="sec-sub">全双工 / 模态 / 音色 / base</span>
+    </div>
+    <div class="picks">
+      <div class="picks-head"><h3>选型速查</h3><span class="chip">基于当前公开信息</span></div>
+      <div class="pick-row">
+        <div class="pick-need">要真·全双工<span>可打断、边听边说</span></div>
+        <div class="pick-ans"><strong>GPT-Live-1</strong> 官方明确采用模型级全双工连续交互；<strong>Moshi</strong> 的双音轨联合建模证据最清楚；<strong>MiniCPM-o 4.5</strong>、<strong>Fun-Audio-Chat-Duplex</strong>、<strong>RoboBrain-Audio</strong>也有官方全双工声明。GPT‑Realtime、Qwen Realtime、豆包及 <strong>MinMo</strong>、<strong>Freeze-Omni</strong>属于系统或产品层实现，选型时不要混写。</div>
+      </div>
+      <div class="pick-row">
+        <div class="pick-need">要全模态输入<span>图像+视频+音频</span></div>
+        <div class="pick-ans"><strong>Qwen3-Omni</strong>、<strong>MiniCPM-o 4.5</strong>、<strong>InteractiveOmni</strong>、<strong>Ming-omni</strong>（还能生成图像）；<strong>Mini-Omni2</strong>覆盖文本、视觉与语音。</div>
+      </div>
+      <div class="pick-row">
+        <div class="pick-need">要商业实时语音 API<span>直接接入、工具调用</span></div>
+        <div class="pick-ans"><strong>GPT-Realtime-2.1</strong>偏复杂语音 Agent 与推理/工具；<strong>Qwen-Audio 3.0 Realtime</strong>偏纯语音、smart_turn 与克隆音色；<strong>豆包实时语音</strong>偏中文拟人表达、情绪和演绎。<strong>GPT-Live-1</strong>目前仅在 ChatGPT 产品中推出，官方表示 API 计划稍后开放。</div>
+      </div>
+      <div class="pick-row">
+        <div class="pick-need">想拿来当 base 二次开发<span>开源、可训</span></div>
+        <div class="pick-ans"><strong>VITA-Audio</strong>(效果好于 GLM-4-Voice、官方推荐当 base)、<strong>GLM-4-Voice</strong>、<strong>OpenS2S</strong>(最透明)、<strong>SPIRIT LM</strong>。</div>
+      </div>
+      <div class="pick-row">
+        <div class="pick-need">要改 / 克隆音色<span>克隆 or 微调</span></div>
+        <div class="pick-ans">本地端到端路径优先看 <strong>MiniCPM-o 4.5</strong> 与 <strong>MiMo-Audio</strong>；云端 <strong>Qwen-Audio 3.0 Realtime</strong>与豆包 SeedDuplex 3.0 明确支持复刻音色。若音色一致性比对话建模更重要，仍应优先选择专用 TTS。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="method">
+    <div class="sec-head">
+      <span class="sec-index">口径</span>
+      <span class="sec-title">先分层，再谈“全双工”</span>
+      <span class="sec-sub">模型结构 ≠ 会话协议 ≠ 产品体验</span>
+    </div>
+    <div class="evidence-band">
+      <div><h3>三层判断</h3><p><b>模型级原生</b>要求公开结构能同时维护用户与助手的时间关系；<b>系统 / 产品级</b>可通过 VAD、取消响应、播放器清队列或外挂预测器实现自然插话；<b>流式 / 半双工</b>只说明输入输出能分块，不代表听说真正并发。卡片底部标签按这套口径生成。</p></div>
+      <div><h3>证据优先级</h3><ul><li>本地代码与配置 / 官方仓库</li><li>论文或技术报告</li><li>官方产品 API 与模型卡</li><li>缺少前三类证据时标记“信息有限”</li></ul></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p class="foot-note"><strong>范围：</strong>收录能在统一或紧耦合模型链路中完成语音理解与语音生成的代表项目；纯 ASR、纯 TTS 和传统 ASR→LLM→TTS 级联不在本表。商业 API 与闭源产品单独标识，不因产品可用或可调用而推断其内部结构、训练路径或权重开放状态。</p>
+    <p class="foot-note"><strong>交互范式：</strong>采用 OpenAI 提出的级联式、轮次式、连续交互三分类。由于本表聚焦端到端语音模型，传统级联式系统不作为模型卡收录；产品层支持持续收音或打断，也不会自动被标成模型级连续交互。</p>
+    <p class="foot-note"><strong>时间：</strong>优先采用论文、技术报告或官方首次公开月份。MiMo-Audio 已按 2025.12 正式报告归位；无精确月份的条目在同年内不做强行先后判断。</p>
+    <p class="foot-note"><strong>限制：</strong>“可微调”只表示存在公开权重、代码或合理训练路径，不等于低成本；“语音克隆”区分本地模型能力与云 API 能力。卡片是选型索引，不替代各项目的最新模型卡和许可证。</p>
+    <div class="foot-meta">
+      <span><span class="dot">●</span> 25 个端到端语音模型 / 产品 · 模态 × 双工层级 × 开放状态 × 音色</span>
+      <span>核对日期 2026.07.21 · 官方资料入口见各卡片</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function(){
+    var sourceLinks={
+      'GPT-Live-1':'https://openai.com/zh-Hans-CN/index/introducing-gpt-live/',
+      'GPT-Realtime-2.1':'https://developers.openai.com/api/docs/models/gpt-realtime-2.1',
+      'Qwen-Audio 3.0 Realtime':'https://help.aliyun.com/zh/model-studio/qwen-audio-realtime-user-guides',
+      'Doubao Realtime Voice 3.0':'https://docs.volcengine.com/docs/6561/2549778?lang=zh',
+      'MiniCPM-o 4.5':'https://arxiv.org/abs/2604.27393',
+      'Fun-Audio-Chat':'https://github.com/FunAudioLLM/Fun-Audio-Chat',
+      'Qwen3-Omni':'https://arxiv.org/abs/2509.17765',
+      'RoboBrain-Audio':'https://hub.baai.ac.cn/view/50555',
+      'Step-Audio 2':'https://github.com/stepfun-ai/Step-Audio2',
+      'OpenS2S':'https://arxiv.org/abs/2507.05177',
+      'Ming-omni':'https://arxiv.org/abs/2506.09344',
+      'Kimi-Audio':'https://github.com/MoonshotAI/Kimi-Audio',
+      'Qwen2.5-Omni':'https://github.com/QwenLM/Qwen2.5-Omni',
+      'Baichuan-Audio':'https://arxiv.org/abs/2502.17239',
+      'MinMo':'https://arxiv.org/abs/2501.06282',
+      'InteractiveOmni':'https://arxiv.org/abs/2510.13747',
+      'LLaMA-Omni2':'https://arxiv.org/abs/2505.02625',
+      'VITA-Audio':'https://github.com/VITA-MLLM/VITA-Audio',
+      'GLM-4-Voice':'https://github.com/THUDM/GLM-4-Voice',
+      'Freeze-Omni':'https://github.com/VITA-MLLM/Freeze-Omni',
+      'Mini-Omni2':'https://github.com/gpt-omni/mini-omni2',
+      'Moshi':'https://github.com/kyutai-labs/moshi',
+      'SPIRIT LM':'https://speechbot.github.io/spiritlm/',
+      'SpeechGPT':'https://github.com/0nutation/SpeechGPT',
+      'MiMo-Audio':'https://github.com/XiaomiMiMo/MiMo-Audio'
+    };
+    var localLinks={
+      'GPT-Realtime-2.1':'../../接口设计/实时通信参考/openai_realtime_websocket.html',
+      'Qwen-Audio 3.0 Realtime':'./volcengine_demos_comparison.html',
+      'Doubao Realtime Voice 3.0':'./volcengine_demos_comparison.html',
+      'MiniCPM-o 4.5':'../../模型/MiniCPM-o-4.5/模型介绍.html',
+      'Qwen3-Omni':'../../模型/Qwen3-Omni/qwen3omni.html',
+      'Step-Audio 2':'../../模型/Step-Audio-2/Step_Audio_2_网页报告_重设计.html',
+      'Moshi':'../../模型/Moshi/moshi模型介绍.html'
+    };
+    var duplex={
+      'GPT-Live-1':'native','GPT-Realtime-2.1':'system','Qwen-Audio 3.0 Realtime':'system',
+      'Doubao Realtime Voice 3.0':'system','MiniCPM-o 4.5':'native','Fun-Audio-Chat':'native',
+      'Qwen3-Omni':'half','RoboBrain-Audio':'native','Step-Audio 2':'half','OpenS2S':'half',
+      'Ming-omni':'half','Kimi-Audio':'half','Qwen2.5-Omni':'half','Baichuan-Audio':'half',
+      'MinMo':'system','InteractiveOmni':'half','LLaMA-Omni2':'half','VITA-Audio':'half',
+      'GLM-4-Voice':'half','Freeze-Omni':'system','Mini-Omni2':'system','Moshi':'native',
+      'SPIRIT LM':'half','SpeechGPT':'half','MiMo-Audio':'half'
+    };
+    var commercial={
+      'GPT-Realtime-2.1':true,'Qwen-Audio 3.0 Realtime':true,'Doubao Realtime Voice 3.0':true
+    };
+    var product={'GPT-Live-1':true};
+    var duplexLabel={native:'模型级原生',system:'系统 / 产品级',half:'流式 / 半双工'};
+    var paradigmLabel={continuous:'连续交互',turn:'轮次式',cascade:'级联式'};
+    var grid=document.getElementById('modelGrid');
+    var cards=Array.prototype.slice.call(grid.querySelectorAll('.card'));
+
+    function modelName(card){
+      return card.querySelector('.model').textContent.replace(/商业 API|闭源产品|产品参照|补充|前代/g,'').replace(/\s+/g,' ').trim();
+    }
+    cards.forEach(function(card){
+      var name=modelName(card),kind=duplex[name]||'half';
+      card.dataset.name=name;
+      card.dataset.duplex=kind;
+      card.dataset.access=commercial[name]?'commercial':product[name]?'product':'open';
+      card.dataset.duplexLabel=duplexLabel[kind];
+      card.dataset.paradigm=kind==='native'?'continuous':'turn';
+      var date=(card.querySelector('.model-meta').textContent.match(/20\d{2}(?:\.\d{1,2})?/)||['0'])[0];
+      card.dataset.date=date;
+      var access=document.createElement('div');
+      access.className='access-row access-'+card.dataset.access;
+      var accessLabel={open:'开源权重',commercial:'商业 API · 权重未公开',product:'闭源产品 · API 暂未开放'};
+      access.innerHTML='<span class="access-key">开放状态</span><b>'+accessLabel[card.dataset.access]+'</b>';
+      card.querySelector('.card-top > div:first-child').appendChild(access);
+      var paradigm=document.createElement('div');
+      var paradigmDetail=card.dataset.paradigm==='continuous'?'持续处理输入并同步生成输出':kind==='system'?'以轮次为边界，产品层支持打断':'以离散轮次完成听说';
+      paradigm.className='paradigm-cell paradigm-'+card.dataset.paradigm;
+      paradigm.innerHTML='<span class="paradigm-key">交互范式</span><span class="paradigm-mark"></span><span class="paradigm-val"><b>'+paradigmLabel[card.dataset.paradigm]+'</b>'+paradigmDetail+'</span>';
+      card.querySelector('.caps').before(paradigm);
+      var actions=document.createElement('div');
+      actions.className='card-actions';
+      if(localLinks[name]) actions.innerHTML+='<a href="'+localLinks[name]+'">本地深读 →</a>';
+      if(sourceLinks[name]) actions.innerHTML+='<a href="'+sourceLinks[name]+'" target="_blank" rel="noreferrer">官方资料 ↗</a>';
+      card.appendChild(actions);
+    });
+    cards.sort(function(a,b){return parseFloat(b.dataset.date)-parseFloat(a.dataset.date);});
+    cards.forEach(function(card){grid.appendChild(card);});
+
+    function drawWave(id,phase){
+      var el=document.getElementById(id),html='',N=72;if(!el)return;
+      for(var i=0;i<N;i++){
+        var t=i/(N-1),gate=(i>10&&i<60)?1:.35;
+        var detail=.22+.78*Math.abs(Math.sin(i*1.43+phase)*Math.cos(i*.31+phase));
+        var h=Math.max(3,Math.round((5+detail*30)*gate));
+        html+='<span class="bar" style="height:'+h+'px;animation-delay:'+((i*.032)+phase).toFixed(2)+'s"></span>';
+      }
+      el.innerHTML=html;
+    }
+    drawWave('waveIn',.3);drawWave('waveOut',1.4);
+
+    var search=document.getElementById('modelSearch');
+    var buttons=Array.prototype.slice.call(document.querySelectorAll('.filter-btn'));
+    var viewButtons=Array.prototype.slice.call(document.querySelectorAll('.view-btn'));
+    var listHead=document.getElementById('listHead');
+    var resultCount=document.getElementById('resultCount');
+    var noResults=document.getElementById('noResults');
+    var activeFilter='all';
+    function applyFilters(){
+      var query=search.value.trim().toLowerCase(),visible=0;
+      cards.forEach(function(card){
+        var matchText=!query||card.textContent.toLowerCase().indexOf(query)>-1;
+        var accessFilter=activeFilter==='open'||activeFilter==='commercial'||activeFilter==='product';
+        var matchKind=activeFilter==='all'||card.dataset.duplex===activeFilter||(accessFilter&&card.dataset.access===activeFilter);
+        card.hidden=!(matchText&&matchKind);if(!card.hidden)visible++;
+      });
+      resultCount.textContent='显示 '+visible+' / '+cards.length;
+      noResults.classList.toggle('show',visible===0);
+    }
+    buttons.forEach(function(button){
+      button.addEventListener('click',function(){
+        activeFilter=button.dataset.filter;
+        buttons.forEach(function(item){item.classList.toggle('active',item===button);});
+        applyFilters();
+      });
+    });
+    function setView(view){
+      var isList=view==='list';
+      grid.classList.toggle('list-view',isList);
+      grid.dataset.view=view;
+      listHead.classList.toggle('show',isList);
+      viewButtons.forEach(function(button){
+        var active=button.dataset.view===view;
+        button.classList.toggle('active',active);
+        button.setAttribute('aria-pressed',active?'true':'false');
+      });
+    }
+    viewButtons.forEach(function(button){
+      button.addEventListener('click',function(){setView(button.dataset.view);});
+    });
+    search.addEventListener('input',applyFilters);
+    document.getElementById('statTotal').textContent=cards.length;
+    document.getElementById('statNative').textContent=cards.filter(function(c){return c.dataset.duplex==='native';}).length;
+    document.getElementById('statSystem').textContent=cards.filter(function(c){return c.dataset.duplex==='system';}).length;
+    document.getElementById('statCommercial').textContent=cards.filter(function(c){return c.dataset.access==='commercial';}).length;
+    setView('list');
+    applyFilters();
+  })();
+</script>
+
+</body>
+</html>
